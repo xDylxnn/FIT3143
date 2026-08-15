@@ -36,6 +36,7 @@ static double monotonic_seconds(void) {
 /*
  * Once multiples of 2 and 3 are ruled out, every remaining factor is 6k +/- 1, 
  * so the loop steps by 6 and tests two divisors at a time.
+ * Returns true if n is prime, false otherwise.
  */
 static bool is_prime(long n) {
     if (n <= 1) return false;
