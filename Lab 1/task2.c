@@ -1,162 +1,219 @@
+/* task2.c - counts the primes below n in parallel with POSIX threads. */
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
-#include <unistd.h>     /* sysconf, to detect the core count */
+#include <unistd.h>             /* sysconf, to detect the core count */
 #include <pthread.h>
 
-#define NUM_THREADS 8
+#define CACHE_LINE_BYTES 64  
+#define CHUNKS_PER_THREAD 64    /* higher = better balance, more loop overhead */
+#define MIN_THREADS 1
+#define MAX_THREADS 256
+#define FILE_NAME "primes2.txt"
 
-//same isPrime function as in task1.c, which checks if a number is prime or not
-bool isPrime(long n) {
-    //Guard  clauses
-    if (n <= 1) return false;
-    if (n <= 3) return true;
-    if (n % 2 == 0 || n % 3 == 0) return false; //Eliminates all even numbers and multiples of 3
-    //every prime number greater than 3 can be written in the form 6k ± 1, where k is a positive integer. This loop checks for factors of n in that form.
-    for (long i = 5; i <= n / i; i += 6)
-        if (n % i == 0 || n % (i + 2) == 0) return false; //Checks for factors of n in the form 6k ± 1
-    return true;
-}
-//Global variables
-//Shared data. Written once before the threads start, then read-only.
-long num;
-char *flags; //* means pointer and points at the first byte of the array.
-int nthreads;
-long chunk;
-//Struct bundles several variables into one unit.
-//One of these per thread, each thread. gets its own pointer, so nothing is shared between them.
+/* One worker per thread, records thread working data. */
 typedef struct {
     int id;
     long chunks_done;
     double busy;
-} worker_t; //_t means is a type name
+} worker_t;
 
-//the timing helper
-//Returns the current time in seconds as a double, using the CLOCK_MONOTONIC clock (wall-clock seconds).
-double now(void) {
-    struct timespec t; //create a struct with two fields.
-    clock_gettime(CLOCK_MONOTONIC, &t); //fill in the struct with the current time. & means "address of", so we are passing a pointer to the struct to the function, which fills in the fields.
-    return t.tv_sec + t.tv_nsec / 1e9; //return the seconds plus the nanoseconds divided by 1e9 to convert to seconds.
+/* Shared data. Written once before the threads start, then read-only. */
+static long  upper_bound;
+static char  *flags;
+static int   nthreads;
+static long  chunk_size;
+
+/* Timestamp in seconds */
+static double monotonic_seconds(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec / 1e9;
 }
 
-//The function that each thread runs. It takes a void pointer as an argument, which is cast to a worker_t pointer. Each thread computes prime numbers in chunks, based on its id and the total number of threads.
-void *test_primes(void *arg) {
-    worker_t *w = (worker_t *)arg;      // cast the void* back to our struct pointer
-    double t0 = now();
- 
-    //Take chunk number id, then id+nthreads, id+2*nthreads, ... until the
-    //work runs out. Each chunk is a run of consecutive numbers.
-    for (long c = w->id; 2 + c * chunk < num; c += nthreads) {
-        //convert a chunk number into an actual range
-        long lo = 2 + c * chunk;
-        long hi = lo + chunk;
-        if (hi > num) hi = num;         //clamp the final, partial chunk
- 
+/*
+ * Once multiples of 2 and 3 are ruled out, every remaining factor is 6k +/- 1, 
+ * so the loop steps by 6 and tests two divisors at a time.
+ */
+static bool is_prime(long n) {
+    if (n <= 1) return false;
+    if (n <= 3) return true;
+    if (n % 2 == 0 || n % 3 == 0) return false;
+    for (long i = 5; i <= n / i; i += 6)
+        if (n % i == 0 || n % (i + 2) == 0) return false;
+    return true;
+}
+
+/*
+ * Worker entry point. arg is this thread's worker_t. Created chunk range from
+ * w.id and chunk size, marks the primes it finds in flags[], and
+ * records its chunk count and busy time in *w.
+ */
+static void *test_primes(void *arg) {
+    worker_t *w = (worker_t *)arg;
+    double t0 = monotonic_seconds();
+
+    for (long c = w->id; 2 + c * chunk_size < upper_bound; c += nthreads) {
+        //turn the chunk number into a range of consecutive candidates
+        long lo = 2 + c * chunk_size;
+        long hi = lo + chunk_size;
+        if (hi > upper_bound) hi = upper_bound;  //clamp the final, partial chunk
+
         for (long i = lo; i < hi; i++)
-            if (isPrime(i)) flags[i] = 1;   //only write on a hit: writing 0s;
+            if (is_prime(i)) flags[i] = 1;      //composites keep the calloc'd 0
         w->chunks_done++;
     }
- 
-    w->busy = now() - t0; // record the time spent in this thread
+
+    w->busy = monotonic_seconds() - t0;
     return NULL;
+}
+
+/*
+ * Reads upper_bound and the thread count from argv, falling back to a 
+ * prompt and to the core count. Returns false if either value is unusable.
+ */
+static bool read_configuration(int argc, char **argv)
+{
+    if (argc > 1) {
+        upper_bound = atol(argv[1]);
+    } else {
+        printf("Enter a number: ");
+        if (scanf("%ld", &upper_bound) != 1) {
+            fprintf(stderr, "Error: could not read an integer.\n");
+            return false;
+        }
+    }
+    nthreads = (argc > 2) ? atoi(argv[2]) : (int)sysconf(_SC_NPROCESSORS_ONLN);
+
+    if (nthreads < MIN_THREADS || nthreads > MAX_THREADS) {
+        fprintf(stderr, "Error: thread count must be between %d and %d.\n", MIN_THREADS, MAX_THREADS);
+        return false;
+    }
+
+    return true;
+}
+
+/*
+ * Prints the primes found: to stdout for n <= 100, to FILE_NAME otherwise. 
+ * Returns the count, or -1 on file error.
+ */
+static long report_primes(void) {
+    long count = 0;
+    if (upper_bound <= 100) {
+        for (long i = 2; i < upper_bound; i++)
+            if (flags[i]) { printf("%ld ", i); count++; }
+        printf("\n");
+    } else {
+        FILE *fptr = fopen(FILE_NAME, "w");
+        if (fptr == NULL) {
+            fprintf(stderr, "Error: could not open %s for writing.\n", FILE_NAME);
+            return -1;
+        }
+        for (long i = 2; i < upper_bound; i++)
+            if (flags[i]) { fprintf(fptr, "%ld\n", i); count++; }
+        fclose(fptr);
+    }
+    return count;
+}
+
+/*
+ * Prints per-thread chunk counts and busy times, so the load balance is
+ * measured. A balanced run sits near an imbalance of 1.0.
+ */
+static void report_threads(const worker_t *workers) {
+    double sum = 0, max = 0;
+    for (int t = 0; t < nthreads; t++) {
+        sum += workers[t].busy;
+        if (workers[t].busy > max) max = workers[t].busy;
+        printf("  thread %-3d chunks=%-6ld busy=%.6f s\n",
+               workers[t].id, workers[t].chunks_done, workers[t].busy);
+    }
+    printf("Imbalance (slowest/average) = %.4f   (1.0 is perfect)\n",
+           max / (sum / nthreads));
 }
 
 
 int main(int argc, char **argv) {
     struct timespec start, end;
- 
-    //Read n and the thread count from the command line so the experiment
-    //script can sweep them without recompiling. Falls back to prompting.
-    if (argc > 1) {
-        num = atol(argv[1]); // convert the first command line argument to a long integer
-    } else {
-        printf("Enter a number: ");
-        if (scanf("%ld", &num) != 1) { //%id means long decimal, & means scanf needs to write into num
-            fprintf(stderr, "Error: could not read an integer.\n");
-            return 1;
-        }
-    }
-    nthreads = (argc > 2) ? atoi(argv[2]) : (int)sysconf(_SC_NPROCESSORS_ONLN); // convert the second command line argument to an integer, or use the number of available processors if not provided
- 
-    if (nthreads < 1 || nthreads > 256) {
-        fprintf(stderr, "Error: thread count must be between 1 and 256.\n");
-        return 1;
-    }
-    if (num < 2) {
-        printf("No primes are strictly less than %ld.\n", num);
+    pthread_t      *tid     = NULL;
+    worker_t       *workers = NULL;
+    long           count    = 0;
+    
+    if (!read_configuration(argc, argv)) return 1;
+
+    if (upper_bound < 2) {
+        printf("No primes are strictly less than %ld.\n", upper_bound);
         return 0;
     }
  
-    //Aim for about 64 chunks per thread: enough chunks that the workload
-    //evens out, few enough that each chunk still covers many whole cache lines.
-    chunk = num / (nthreads * 64);
-    if (chunk < 64) chunk = 64;
- 
-    flags = calloc((size_t)num, 1);
-    pthread_t *tid = malloc((size_t)nthreads * sizeof(pthread_t)); // allocate an array of thread IDs
-    worker_t *w = calloc((size_t)nthreads, sizeof(worker_t));
-    if (flags == NULL || tid == NULL || w == NULL) {
-        fprintf(stderr, "Error: could not allocate memory for %ld candidates.\n", num);
+    //Aim for ~64 chunks per thread: enough that the workload evens out, few
+    //enough that each chunk still covers many whole cache lines.
+    chunk_size = upper_bound / (nthreads * CHUNKS_PER_THREAD);
+    if (chunk_size < CACHE_LINE_BYTES) {
+        chunk_size = CACHE_LINE_BYTES;
+    }
+
+    flags = calloc(upper_bound, 1);
+    if (flags == NULL) {
+        fprintf(stderr, "Error: could not allocate memory for %ld candidates.\n", upper_bound);
+        return 1;
+    }
+
+    tid = malloc((size_t)nthreads * sizeof(pthread_t));
+    if (tid == NULL) {
+        fprintf(stderr, "Error: could not allocate memory for %d thread handles.\n", nthreads);
+        free(flags);
+        return 1;
+    }
+
+    workers = calloc((size_t)nthreads, sizeof(worker_t));
+    if (workers == NULL) {
+        fprintf(stderr, "Error: could not allocate memory for %d worker structs.\n", nthreads);
+        free(flags);
+        free(tid);
         return 1;
     }
  
-    //Phase 1: timed computation. Allocation and file output are outside the
-    //timed region, exactly as in task1.c, so the two times measure the same
-    //thing and the ratio between them is a valid speedup.
+    //Time the threads only. Allocation and output sit outside the timed region,
+    //as in task1.c, so the ratio of the two times is a valid speedup.
     clock_gettime(CLOCK_MONOTONIC, &start);
- 
+
     for (int t = 0; t < nthreads; t++) {
-        w[t].id = t;
-        if (pthread_create(&tid[t], NULL, test_primes, &w[t]) != 0) { //phread_create takes 4 arguements: a pointer to a pthread_t variable, a pointer to a pthread_attr_t variable (NULL means default attributes), a pointer to the function to run, and a pointer to the argument to pass to the function. It returns 0 on success and an error code on failure.
+        workers[t].id = t;
+        if (pthread_create(&tid[t], NULL, test_primes, &workers[t]) != 0) {
             fprintf(stderr, "Error: could not create thread %d.\n", t);
-            return 1;
+            for (int j = 0; j < t; j++)
+                pthread_join(tid[j], NULL);   //wait for the threads that did start
+            return 1;   //threads already started are abandoned; results would be partial anyway
         }
     }
     for (int t = 0; t < nthreads; t++)
-        pthread_join(tid[t], NULL); //Join waits for the thread to finish. It takes two arguments: a pthread_t variable and a pointer to a void pointer (NULL means we don't care about the return value). It returns 0 on success and an error code on failure.
- 
+        pthread_join(tid[t], NULL);
+
     clock_gettime(CLOCK_MONOTONIC, &end);
     double time_taken = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
  
-    //Phase 2: output in ascending order. Scanning flags[] by index gives a
-    //sorted list for free - no sorting step is needed after the parallel phase.
-    long count = 0;
-    if (num <= 100) {
-        for (long i = 2; i < num; i++)
-            if (flags[i]) { printf("%ld ", i); count++; }
-        printf("\n");
-    } else {
-        FILE *fptr = fopen("primes2.txt", "w");
-        if (fptr == NULL) {
-            fprintf(stderr, "Error: could not open primes2.txt for writing.\n");
-            free(flags);
-            return 1;
-        }
-        for (long i = 2; i < num; i++)
-            if (flags[i]) { fprintf(fptr, "%ld\n", i); count++; }
-        fclose(fptr);
+    //Scanning flags[] by index gives an ascending list for free, so no sort
+    //is needed after the parallel phase.
+    count = report_primes();
+
+    if (count < 0) {
+        free(flags);
+        free(tid);
+        free(workers);
+        return 1;
     }
- 
-    //Per-thread figures, so the presentation can show measured load balance
-    //rather than just claiming it. A well-balanced run gives near-identical
-    //busy times and an imbalance close to 1.0.
-    double sum = 0, max = 0;
-    for (int t = 0; t < nthreads; t++) {
-        sum += w[t].busy;
-        if (w[t].busy > max) max = w[t].busy;
-        printf("  thread %-3d chunks=%-6ld busy=%.6f s\n",
-               w[t].id, w[t].chunks_done, w[t].busy);
-    }
-    printf("Imbalance (slowest/average) = %.4f   (1.0 is perfect)\n",
-           max / (sum / nthreads));
+
+    report_threads(workers);
  
     printf("n=%ld  threads=%d  primes=%ld  time=%.6f s\n",
-           num, nthreads, count, time_taken);
+           upper_bound, nthreads, count, time_taken);
  
     free(flags);
     free(tid);
-    free(w);
+    free(workers);
     return 0;
 }
  
