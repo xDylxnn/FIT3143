@@ -55,13 +55,17 @@ static long report_primes(void) {
  * and prints them to stdout if upper_bound <= 100, or to a file otherwise.
  * Uses flags rather than inline printing to avoid the overhead of I/O in the timing measurement.
  */
-int main() {
+int main(int argc, char **argv) {
     struct timespec start, end;
-
-    printf("Enter a number: ");
-    if (scanf("%ld", &upper_bound) != 1) {
-        fprintf(stderr, "Error: could not read an integer.\n");
-        return 1;
+    //Read n from the command line so the experiment script can sweep it.
+    if (argc > 1) {
+        upper_bound = atol(argv[1]);
+    } else {
+        printf("Enter a number: ");
+        if (scanf("%ld", &upper_bound) != 1) {
+            fprintf(stderr, "Error: could not read an integer.\n");
+            return 1;
+        }
     }
 
     if (upper_bound < 2) {
