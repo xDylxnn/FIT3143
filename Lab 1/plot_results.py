@@ -43,6 +43,12 @@ P_CORES = 8         # performance cores  (sysctl hw.perflevel0.logicalcpu)
 E_CORES = 4         # efficiency cores   (sysctl hw.perflevel1.logicalcpu)
 TOTAL_CORES = P_CORES + E_CORES
 
+# The runtime-ratio data changes sign between 655K and 778K, but nearby
+# coefficients of variation reach 27%.  Report an uncertainty band instead of
+# manufacturing a precise-looking crossover point from noisy measurements.
+CROSSOVER_LOW = 600_000
+CROSSOVER_HIGH = 900_000
+
 # Wong colour-blind-safe palette. Serial is deliberately grey: it is the
 # reference, not a competitor, so it should recede visually.
 C_SERIAL = "#7f7f7f"
@@ -53,7 +59,7 @@ C_ACCENT = "#009E73"       # green, for annotations
 
 plt.rcParams.update({
     "figure.dpi": 110,
-    "savefig.dpi": 200,
+    "savefig.dpi": 300,
     "font.size": 12,          # presentation-scale: readable projected
     "axes.titlesize": 14,
     "axes.titleweight": "bold",
@@ -146,10 +152,16 @@ def speedup_vs_n(df, outdir, col, colour, fname, title, label):
     ax.axhline(TOTAL_CORES, color=C_IDEAL, linestyle="--", linewidth=1.4,
                label=f"Ideal speedup ({TOTAL_CORES} threads)")
 
-    ymax = df[col].max()
-    ax.axhline(ymax, color=C_ACCENT, linestyle=":", linewidth=1.4)
-    ax.annotate(f"plateau ≈ {ymax:.2f}×",
-                xy=(df["n"].iloc[-1], ymax), xytext=(-10, 8),
+    # A plateau is a sustained tail level, not the single highest sample.  The
+    # n >= 10M mean is 7.05x for POSIX Threads; using max() incorrectly labels
+    # the isolated 8.5M peak (7.41x) as the plateau.
+    tail = df.loc[df["n"] >= 10_000_000, col]
+    if tail.empty:
+        tail = df[col].tail(min(5, len(df)))
+    plateau = tail.mean()
+    ax.axhline(plateau, color=C_ACCENT, linestyle=":", linewidth=1.4)
+    ax.annotate(f"plateau ≈ {plateau:.2f}×",
+                xy=(df["n"].iloc[-1], plateau), xytext=(-10, 8),
                 textcoords="offset points", ha="right",
                 fontsize=10, color=C_ACCENT, fontweight="bold")
 
@@ -159,35 +171,14 @@ def speedup_vs_n(df, outdir, col, colour, fname, title, label):
         ax.axvspan(df["n"].min(), 6e5, color="#cccccc", alpha=0.25, zorder=0)
         ax.annotate("thread-management overhead\ndominates: sub-millisecond runs",
                     xy=(small["n"].iloc[len(small)//2], small[col].min()),
-                    xytext=(0, -46), textcoords="offset points",
-                    ha="center", fontsize=9.5, color="#555555")
+                    xytext=(0.04, 0.06), textcoords="axes fraction",
+                    ha="left", fontsize=9.5, color="#555555")
 
     style(ax, title, "n (upper bound on the prime search)", "Speedup  S = T_serial / T_parallel")
     ax.xaxis.set_major_formatter(FuncFormatter(millions))
     ax.set_ylim(0, TOTAL_CORES + 1.4)
     ax.legend(frameon=False, loc="lower right")
     save(fig, outdir, fname)
-
-
-def find_crossover(df):
-    """
-    Locate the problem size at which OpenMP takes over from POSIX Threads.
-
-    Two things make a naive scan unreliable. At small n the two are within
-    measurement noise, so the ordering flips back and forth; and at large n a
-    single unlucky point can invert once (here n = 8.5M) while every neighbour
-    on both sides favours OpenMP. Both are artefacts, not crossovers.
-
-    The ratio T_pthreads / T_openmp is therefore smoothed with a 3-point
-    rolling median before the last upward crossing of 1.0 is taken. A median
-    filter removes isolated outliers without shifting a genuine transition.
-    """
-    ratio = (df["pthreads_min_s"] / df["openmp_min_s"])
-    smooth = ratio.rolling(3, center=True, min_periods=1).median().to_numpy()
-    for i in range(len(smooth) - 1, 0, -1):
-        if smooth[i - 1] < 1.0 <= smooth[i]:
-            return i - 1, df["n"].iloc[i - 1], df["n"].iloc[i]
-    return None, None, None
 
 
 def graph7(df, outdir):
@@ -224,14 +215,16 @@ def graph7(df, outdir):
           "T$_{pthreads}$ / T$_{openmp}$")
     bx.xaxis.set_major_formatter(FuncFormatter(millions))
 
-    _, lo, hi = find_crossover(df)
-    if lo is not None:
-        cross = (lo * hi) ** 0.5          # geometric midpoint, correct on a log axis
-        for a in (ax, bx):
-            a.axvline(cross, color=C_ACCENT, linestyle="--", linewidth=1.5)
-        bx.annotate(f"crossover ≈ {cross/1e3:.0f}K",
-                    xy=(cross, 1.0), xytext=(10, -30), textcoords="offset points",
-                    fontsize=10, color=C_ACCENT, fontweight="bold")
+    # CV reaches 27% around the observed sign change, so show the defensible
+    # 0.6-0.9M region rather than a falsely precise geometric midpoint.
+    cross_mid = (CROSSOVER_LOW * CROSSOVER_HIGH) ** 0.5
+    for a in (ax, bx):
+        a.axvspan(CROSSOVER_LOW, CROSSOVER_HIGH, color=C_ACCENT,
+                  alpha=0.10, zorder=0)
+    bx.annotate("crossover region\n≈ 0.6-0.9M",
+                xy=(cross_mid, 1.0), xytext=(12, -48),
+                textcoords="offset points", fontsize=10,
+                color=C_ACCENT, fontweight="bold")
 
     peak = ratio.iloc[len(ratio)//3:].max()
     bx.text(0.985, 0.93, f"OpenMP up to {(peak-1)*100:.0f}% faster in the mid-range",
@@ -257,8 +250,8 @@ def graph3(dt, outdir):
     style(ax, "Graph 3 — Serial vs POSIX Threads runtime with increasing thread count",
           "Threads (p)", f"Runtime (s) at n = {int(dt['n'].iloc[0]):,}")
     ax.set_ylim(bottom=0)
-    mark_cores(ax, label_y=0.72)
-    ax.legend(frameon=False, loc="upper right")
+    mark_cores(ax, label_y=0.95)
+    ax.legend(frameon=False, loc="center right")
     save(fig, outdir, "graph3_serial_vs_pthreads_runtime_threads.png")
 
 
@@ -284,21 +277,43 @@ def graph4(dt, outdir):
 
 
 def graph8(dt, outdir):
-    fig, ax = plt.subplots(figsize=FIGSIZE)
+    fig, (ax, bx) = plt.subplots(
+        2, 1, figsize=(9, 7.4), sharex=True,
+        gridspec_kw={"height_ratios": [3, 2], "hspace": 0.12})
     ax.plot(dt["threads"], dt["pthreads_min_s"], "s-", color=C_PTHREAD,
             markersize=6, linewidth=2.0, label="POSIX Threads (Task 2)")
     ax.plot(dt["threads"], dt["openmp_min_s"], "^-", color=C_OPENMP,
             markersize=6, linewidth=2.0, label="OpenMP (Task 3)")
     style(ax, "Graph 8 — POSIX Threads vs OpenMP runtime with increasing thread count",
-          "Threads (p)", f"Runtime (s) at n = {int(dt['n'].iloc[0]):,}")
+          "", f"Runtime (s) at n = {int(dt['n'].iloc[0]):,}")
     ax.set_ylim(bottom=0)
     mark_cores(ax)
-    ax.annotate("static partitioning becomes erratic\nonce threads outnumber P-cores",
-                xy=(10, dt.loc[dt["threads"] == 10, "pthreads_min_s"].iloc[0]),
-                xytext=(14, 46), textcoords="offset points",
-                fontsize=9.5, color=C_PTHREAD,
-                arrowprops=dict(arrowstyle="->", color=C_PTHREAD, lw=1.2))
     ax.legend(frameon=False, loc="upper right")
+
+    # The full runtime scale compresses the post-8-thread difference into a
+    # few pixels.  Plotting the ratio makes that persistent separation clear.
+    ratio = dt["pthreads_min_s"] / dt["openmp_min_s"]
+    bx.plot(dt["threads"], ratio, "o-", color=C_ACCENT,
+            markersize=5, linewidth=1.9)
+    bx.axhline(1.0, color="#666666", linestyle="--", linewidth=1.4)
+    bx.fill_between(dt["threads"], 1.0, ratio, where=(ratio >= 1.0),
+                    color=C_OPENMP, alpha=0.16, interpolate=True)
+    bx.fill_between(dt["threads"], 1.0, ratio, where=(ratio < 1.0),
+                    color=C_PTHREAD, alpha=0.16, interpolate=True)
+    bx.axvline(P_CORES, color=C_ACCENT, linestyle="--", linewidth=1.6, zorder=1)
+    bx.axvspan(P_CORES, TOTAL_CORES, color=C_ACCENT, alpha=0.07, zorder=0)
+    bx.axvline(TOTAL_CORES, color="#444444", linestyle=":", linewidth=1.4, zorder=1)
+    style(bx, "", "Threads (p)", "T$_{pthreads}$ / T$_{openmp}$")
+    bx.set_ylim(min(0.95, ratio.min() - 0.01), ratio.max() + 0.035)
+
+    post_p_cores = dt[dt["threads"] > P_CORES]
+    mean_ratio = (post_p_cores["pthreads_min_s"] /
+                  post_p_cores["openmp_min_s"]).mean()
+    bx.text(0.985, 0.92,
+            f"p > {P_CORES}: OpenMP 0.039-0.040 s vs POSIX 0.042-0.043 s "
+            f"({(mean_ratio - 1) * 100:.1f}% faster on average)",
+            transform=bx.transAxes, ha="right", va="top",
+            fontsize=9.5, color=C_OPENMP, fontweight="bold")
     save(fig, outdir, "graph8_pthreads_vs_openmp_runtime_threads.png")
 
 
@@ -408,12 +423,14 @@ def a5_imbalance(df, outdir):
                 markersize=5, linewidth=1.9, label="OpenMP (schedule(dynamic))")
     ax.axhline(1.0, color=C_IDEAL, linestyle="--", linewidth=1.4,
                label="Perfect balance (1.0)")
-    style(ax, "A5 — Load imbalance: dynamic self-scheduling converges, static does not",
+    style(ax, "A5 — Dynamic self-scheduling converges faster",
           "n", "Imbalance  (slowest thread / mean thread)")
     ax.xaxis.set_major_formatter(FuncFormatter(millions))
-    ax.annotate("both schemes peak together at small n\n→ common cause: thread-team startup stagger,\nnot the partitioning scheme",
-                xy=(2.4e5, df["imbalance_pthreads"].max()), xytext=(10, -66),
-                textcoords="offset points", fontsize=9.5, color="#444444",
+    peak_i = df["imbalance_pthreads"].idxmax()
+    ax.annotate("At small n, startup timing dominates\nboth schemes; compare the large-n trend.",
+                xy=(df.loc[peak_i, "n"], df.loc[peak_i, "imbalance_pthreads"]),
+                xytext=(0.56, 0.61), textcoords="axes fraction",
+                fontsize=9.5, color="#444444",
                 arrowprops=dict(arrowstyle="->", color="#444444", lw=1.1))
     ax.legend(frameon=False, loc="upper right")
     save(fig, outdir, "A5_load_imbalance_vs_n.png")
@@ -433,9 +450,12 @@ def a6_measurement_quality(df, outdir):
     style(ax, "A6 — Measurement stability: dispersion falls as runtime grows",
           "n", "Coefficient of variation (%)")
     ax.xaxis.set_major_formatter(FuncFormatter(millions))
+    first_i = df["serial_cv_pct"].iloc[:4].idxmax()
     ax.annotate("sub-millisecond runs:\ntimer granularity and scheduler\nquantum dominate",
-                xy=(1.6e5, df["serial_cv_pct"].iloc[:4].max()), xytext=(24, 12),
-                textcoords="offset points", fontsize=9.5, color="#555555")
+                xy=(df.loc[first_i, "n"], df.loc[first_i, "serial_cv_pct"]),
+                xytext=(0.17, 0.76), textcoords="axes fraction",
+                fontsize=9.5, color="#555555",
+                arrowprops=dict(arrowstyle="->", color="#555555", lw=1.1))
     ax.legend(frameon=False, loc="upper right")
     save(fig, outdir, "A6_measurement_stability.png")
 
@@ -472,11 +492,9 @@ def talking_points(df, dt):
         print(f"  openmp   S = {p1['speedup_openmp'].iloc[0]:.4f}  "
               f"-> {(1-p1['speedup_openmp'].iloc[0])*100:+.1f}% vs serial")
 
-    _, lo, hi = find_crossover(df)
-    if lo is not None:
-        print(f"\nCrossover: OpenMP overtakes POSIX Threads between "
-              f"n = {int(lo):,} and n = {int(hi):,}")
-        print("  (final crossing; earlier flips at small n are within noise)")
+    print(f"\nCrossover band: OpenMP overtakes POSIX Threads around "
+          f"n = {CROSSOVER_LOW/1e6:.1f}-{CROSSOVER_HIGH/1e6:.1f}M")
+    print("  (do not quote a precise point: nearby CV reaches 27%)")
 
     noisy = df[df[["serial_cv_pct", "pthreads_cv_pct", "openmp_cv_pct"]].max(axis=1) > 15]
     print(f"\nPoints with cv > 15%: {len(noisy)} of {len(df)}"
