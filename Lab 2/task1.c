@@ -125,11 +125,12 @@ static long test_primes(int upper_bound, int chunk_size, int my_rank, int size, 
 int main(int argc, char **argv) {
     int my_rank, size;
 
-    MPI_Init(&argc, &argv); 
-    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Init(&argc, &argv); //Start the runtime
+    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank); //Derive the rank of this process in the communicator
+    MPI_Comm_size(MPI_COMM_WORLD, &size); //count how many of us
 
     long upper_bound = 0, chunk_size = 1;
+    //Set the default values for the upper bound and chunk size
     if (my_rank == 0) {
         if (!read_configuration(argc, argv, &upper_bound)) {
             MPI_Finalize();
@@ -138,10 +139,10 @@ int main(int argc, char **argv) {
     }
 
     chunk_size = upper_bound / (size * CHUNKS_PER_THREAD);
-
+    //Root got n from argv, while others cant see it
     MPI_Bcast(&upper_bound, 1, MPI_LONG, 0, MPI_COMM_WORLD);
     MPI_Bcast(&chunk_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
-
+    //Calculate the number of candidates to be tested, excluding 0 and 1
     long candidates = upper_bound > 2 ? upper_bound - 2 : 0;
     int count = get_individual_count(candidates, chunk_size, my_rank, size);
     char *flags = calloc(count, 1);
@@ -165,23 +166,25 @@ int main(int argc, char **argv) {
         }
     }
 
-
+    //line up all processes before starting the timer
     MPI_Barrier(MPI_COMM_WORLD);
 
-    double start = MPI_Wtime();
-    long chunks_done = test_primes(upper_bound, chunk_size, my_rank, size, flags);
-    double busy = MPI_Wtime() - start;
-
+    double start = MPI_Wtime(); //MPI's wall clock time
+    long chunks_done = test_primes(upper_bound, chunk_size, my_rank, size, flags); //mark the primes in this thread's chunk range
+    double busy = MPI_Wtime() - start; //record the time spent searching for primes
+    //Concatenates every rank's local result buffer into root's buffer. The v variant is needed because ranks own different numbers of candidates, so it takes a counts array and a displacements array instead of one fixed count.
     MPI_Gatherv(flags, count, MPI_CHAR, gathered_flags, candidates_per_process, indecies, MPI_CHAR, 0, MPI_COMM_WORLD);
 
     double elapsed = MPI_Wtime() - start;
     double search_gather_time = 0;
-    
+    // Slowest rank sets the wall clock, so MAX gives the true parallel time
     MPI_Reduce(&elapsed, &search_gather_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    // Keep every rank's compute time so root can report the load imbalance
     MPI_Gather(&busy, 1, MPI_DOUBLE, busy_times, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    // Keep every rank's chunk count to verify the partitioning was even
     MPI_Gather(&chunks_done, 1, MPI_LONG, chunk_counts, 1, MPI_LONG, 0, MPI_COMM_WORLD);
-
     int status = 0;
+    //Root prints the results and writes the primes to a file
     if (my_rank == 0) {
 
         long count = report_primes(upper_bound, chunk_size, size, gathered_flags, indecies);
@@ -211,8 +214,8 @@ int main(int argc, char **argv) {
         }
     }
 
-    MPI_Bcast(&status, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
+    MPI_Bcast(&status, 1, MPI_INT, 0, MPI_COMM_WORLD); //same exist code
+    //Free the allocated memory for the flags, gathered_flags, candidates_per_process, indecies, busy_times, and chunk_counts arrays
     free(flags);
     free(gathered_flags);
     free(candidates_per_process);
