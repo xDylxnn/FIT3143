@@ -138,7 +138,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    chunk_size = upper_bound / (size * CHUNKS_PER_THREAD);
+    chunk_size = upper_bound / ((long)size * CHUNKS_PER_THREAD);
+    if (chunk_size < 1) chunk_size = 1;
+    
     //Root got n from argv, while others cant see it
     MPI_Bcast(&upper_bound, 1, MPI_LONG, 0, MPI_COMM_WORLD);
     MPI_Bcast(&chunk_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
