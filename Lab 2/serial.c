@@ -4,9 +4,11 @@
 #include <stdio.h> // printf, scanf, fopen, fprintf, fclose
 #include <stdbool.h> //Gives the 'bool' type with values 'true' and 'false'
 #include <time.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>   // calloc, free
 
-#define FILE_NAME "primes1.txt"
+#define FILE_NAME "primes_serial.txt"
 
 static long upper_bound;
 static char *flags;  //array of flags indicating whether each number is prime
@@ -27,73 +29,67 @@ static bool is_prime(long n) {
     return true;
 }
 
-/*
- * Prints the primes found: to stdout for n <= 100, to FILE_NAME otherwise. 
- * Returns the count, or -1 on file error.
- */
+/* Always write the sorted list, including an empty file for n <= 2. */
 static long report_primes(void) {
+    FILE *fptr = fopen(FILE_NAME, "w");
+    if (!fptr) {
+        fprintf(stderr, "Error: could not open %s for writing.\n", FILE_NAME);
+        return -1;
+    }
     long count = 0;
-    if (upper_bound <= 100) {
-        for (long i = 2; i < upper_bound; i++)
-            if (flags[i]) { printf("%ld ", i); count++; }
-        printf("\n");
-    } else {
-        FILE *fptr = fopen(FILE_NAME, "w");
-        if (fptr == NULL) {
-            fprintf(stderr, "Error: could not open %s for writing.\n", FILE_NAME);
-            return -1;
+    bool valid = true;
+    for (long i = 2; i < upper_bound; i++) {
+        if (flags[i]) {
+            if (fprintf(fptr, "%ld\n", i) < 0) { valid = false; break; }
+            count++;
         }
-        for (long i = 2; i < upper_bound; i++)
-            if (flags[i]) { fprintf(fptr, "%ld\n", i); count++; }
-        fclose(fptr);
+    }
+    if (fclose(fptr) != 0) valid = false;
+    if (!valid) {
+        fprintf(stderr, "Error: failed writing %s.\n", FILE_NAME);
+        return -1;
     }
     return count;
 }
 
-/*
- * Checks the amount of prime numbers below the user inputted upper_bound 
- * and prints them to stdout if upper_bound <= 100, or to a file otherwise.
- * Uses flags rather than inline printing to avoid the overhead of I/O in the timing measurement.
- */
-int main(int argc, char **argv) {
-    struct timespec start, end;
-    //Read n from the command line so the experiment script can sweep it.
-    if (argc > 1) {
-        upper_bound = atol(argv[1]);
-    } else {
-        printf("Enter a number: ");
-        if (scanf("%ld", &upper_bound) != 1) {
-            fprintf(stderr, "Error: could not read an integer.\n");
-            return 1;
-        }
-    }
+static double wall_time(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return t.tv_sec + t.tv_nsec / 1e9;
+}
 
-    if (upper_bound < 2) {
-        printf("No primes are strictly less than %ld.\n", upper_bound);
-        return 0;
+int main(int argc, char **argv) {
+    // Same workload boundary as MPI: input/setup through file close.
+    double overall_start = wall_time();
+    char *end;
+    errno = 0;
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <n: 0..INT_MAX>\n", argv[0]);
+        return 1;
     }
-    
-    flags = calloc((size_t)upper_bound, sizeof(char));
-    if (flags == NULL) {
+    upper_bound = strtol(argv[1], &end, 10);
+    if (errno || end == argv[1] || *end || upper_bound < 0 || upper_bound > INT_MAX) {
+        fprintf(stderr, "Error: n must be an integer from 0 to INT_MAX.\n");
+        return 1;
+    }
+    flags = calloc(upper_bound > 0 ? (size_t)upper_bound : 1, sizeof(char));
+    if (!flags) {
         fprintf(stderr, "Error: could not allocate memory for %ld candidates.\n", upper_bound);
         return 1;
     }
-
-    clock_gettime(CLOCK_MONOTONIC, &start);
-    for (long i = 2; i < upper_bound; i++)
-        flags[i] = is_prime(i);
-    clock_gettime(CLOCK_MONOTONIC, &end);
-    double time_taken = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-
+    double compute_start = wall_time();
+    for (long i = 2; i < upper_bound; i++) flags[i] = is_prime(i);
+    double output_start = wall_time();
     long count = report_primes();
-    if (count < 0) {
-        free(flags);
-        return 1;
-    }
-
-    printf("n=%ld  primes=%ld\n", upper_bound, count);
-    printf("Time taken: %.6f seconds\n", time_taken);
+    double finished = wall_time();
+    if (count < 0) { free(flags); return 1; }
+    double compute_time = output_start - compute_start;
+    printf("n=%ld primes=%ld\n", upper_bound, count);
+    printf("Overall wall-clock time: %.9f seconds\n", finished - overall_start);
+    printf("Sorted primes written to %s\n", FILE_NAME);
+    printf("RESULT,serial,%ld,1,1,%ld,%.9f,%.9f,%.9f,0.000000000,%.9f,%.9f,1.000000000\n",
+           upper_bound, count, finished - overall_start, compute_start - overall_start,
+           compute_time, finished - output_start, compute_time);
     free(flags);
-
     return 0;
 }

@@ -3,6 +3,8 @@
 #include <stdio.h> // printf, scanf, fopen, fprintf, fclose
 #include <stdbool.h> //Gives the 'bool' type with values 'true' and 'false'
 #include <time.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdlib.h>   // calloc, free
 #include <mpi.h> // MPI functions
 
@@ -27,17 +29,15 @@ static bool is_prime(long n) {
 }
 
 /*
- * Reads upper_bound and the thread count from argv, falling back to a 
- * prompt and to the core count. Returns false if either value is unusable.
+ * Root reads and validates n from argv. Counts must fit MPI_Gatherv's int API.
  */
 static bool read_configuration(int argc, char **argv, long *upper_bound) {
-    if (argc > 1) {
-        *upper_bound = atol(argv[1]); // convert the first command line argument to a long integer
-    } else {
-            return false;
-    }
-
-    return true;
+    if (argc != 2) return false;
+    char *end;
+    errno = 0;
+    *upper_bound = strtol(argv[1], &end, 10);
+    // MPI_Gatherv uses int counts/displacements in this implementation.
+    return !errno && end != argv[1] && !*end && *upper_bound >= 0 && *upper_bound <= INT_MAX;
 }
 
 /*
@@ -53,8 +53,7 @@ static int get_individual_count(long candidates, long chunk_size, int rank, int 
 
 
 /*
- * Prints the primes found: to stdout for n <= 100, to FILE_NAME otherwise. 
- * Returns the count, or -1 on file error.
+ * Writes the sorted primes to FILE_NAME; returns the count or -1 on file error.
  */
 static long report_primes(long upper_bound, long chunk_size, int size, const char *flags, const int *indecies) {
     FILE *fptr = fopen(FILE_NAME, "w");
@@ -86,7 +85,11 @@ static long report_primes(long upper_bound, long chunk_size, int size, const cha
         }
     }
 
-    fclose(fptr);
+    if (fclose(fptr) != 0) valid = false;
+    if (!valid) {
+        fprintf(stderr, "Error: failed writing %s.\n", FILE_NAME);
+        return -1;
+    }
 
     return count;
 }
@@ -94,11 +97,9 @@ static long report_primes(long upper_bound, long chunk_size, int size, const cha
 
 
 /*
- * Worker entry point. arg is this thread's worker_t. Created chunk range from
- * w.id and chunk size, marks the primes it finds in flags[], and
- * records its chunk count and busy time in *w.
+ * Marks this rank's cyclic chunks in local order and returns its chunk count.
  */
-static long test_primes(int upper_bound, int chunk_size, int my_rank, int size, char *flags) {
+static long test_primes(long upper_bound, long chunk_size, int my_rank, int size, char *flags) {
     
     long candidates = upper_bound > 2 ? upper_bound - 2 : 0;
     long total_chunks = candidates / chunk_size + (candidates % chunk_size != 0);
@@ -129,11 +130,17 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank); //Derive the rank of this process in the communicator
     MPI_Comm_size(MPI_COMM_WORLD, &size); //count how many of us
 
+    // One root-clock interval: input/setup through successful file close.
+    // MPI startup, this initial barrier, diagnostics and finalisation are excluded.
+    MPI_Barrier(MPI_COMM_WORLD);
+    double overall_start = MPI_Wtime();
+
     long upper_bound = 0, chunk_size = 1;
     //Set the default values for the upper bound and chunk size
     if (my_rank == 0) {
         if (!read_configuration(argc, argv, &upper_bound)) {
-            MPI_Finalize();
+            fprintf(stderr, "Usage: %s <n: 0..INT_MAX>\n", argv[0]);
+            MPI_Abort(MPI_COMM_WORLD, 1);
             return 1;
         }
     }
@@ -141,25 +148,29 @@ int main(int argc, char **argv) {
     chunk_size = upper_bound / ((long)size * CHUNKS_PER_THREAD);
     if (chunk_size < 1) chunk_size = 1;
     
-    //Root got n from argv, while others cant see it
+    // Root owns configuration parsing and broadcasts the validated values.
     MPI_Bcast(&upper_bound, 1, MPI_LONG, 0, MPI_COMM_WORLD);
     MPI_Bcast(&chunk_size, 1, MPI_LONG, 0, MPI_COMM_WORLD);
     //Calculate the number of candidates to be tested, excluding 0 and 1
     long candidates = upper_bound > 2 ? upper_bound - 2 : 0;
     int count = get_individual_count(candidates, chunk_size, my_rank, size);
-    char *flags = calloc(count, 1);
+    char *flags = calloc(count > 0 ? count : 1, 1);
     char *gathered_flags = NULL;
     int *candidates_per_process = NULL, *indecies = NULL;
     double *busy_times = NULL;
     long *chunk_counts = NULL;
 
     if (my_rank == 0) {
-        gathered_flags = calloc(candidates, 1);
+        gathered_flags = calloc(candidates > 0 ? candidates : 1, 1);
         candidates_per_process = calloc(size, sizeof(int));
         indecies = calloc(size, sizeof(int));
         busy_times = calloc(size, sizeof(double));
         chunk_counts = calloc(size, sizeof(long));
 
+        if (!gathered_flags || !candidates_per_process || !indecies || !busy_times || !chunk_counts) {
+            fprintf(stderr, "Error: root allocation failed.\n");
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
         int offset = 0;
         for (int r = 0; r < size; r++) {
             candidates_per_process[r] = get_individual_count(candidates, chunk_size, r, size);
@@ -168,64 +179,64 @@ int main(int argc, char **argv) {
         }
     }
 
-    //line up all processes before starting the timer
+    if (!flags) {
+        fprintf(stderr, "Error: rank %d allocation failed.\n", my_rank);
+        MPI_Abort(MPI_COMM_WORLD, 1);
+    }
+    // Setup includes waiting for all ranks to be ready for computation.
     MPI_Barrier(MPI_COMM_WORLD);
+    double compute_start = MPI_Wtime();
+    double setup_time = compute_start - overall_start;
+    long chunks_done = test_primes(upper_bound, chunk_size, my_rank, size, flags);
+    double gather_start = MPI_Wtime();
+    double busy = gather_start - compute_start;
 
-    double start = MPI_Wtime(); //MPI's wall clock time
-    long chunks_done = test_primes(upper_bound, chunk_size, my_rank, size, flags); //mark the primes in this thread's chunk range
-    double busy = MPI_Wtime() - start; //record the time spent searching for primes
-    //Concatenates every rank's local result buffer into root's buffer. The v variant is needed because ranks own different numbers of candidates, so it takes a counts array and a displacements array instead of one fixed count.
-    MPI_Gatherv(flags, count, MPI_CHAR, gathered_flags, candidates_per_process, indecies, MPI_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Gatherv(flags, count, MPI_CHAR, gathered_flags, candidates_per_process,
+                indecies, MPI_CHAR, 0, MPI_COMM_WORLD);
+    double output_start = MPI_Wtime();
+    double gather_time = output_start - gather_start;
 
-    double elapsed = MPI_Wtime() - start;
-    double search_gather_time = 0;
-    // Slowest rank sets the wall clock, so MAX gives the true parallel time
-    MPI_Reduce(&elapsed, &search_gather_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    // Keep every rank's compute time so root can report the load imbalance
-    MPI_Gather(&busy, 1, MPI_DOUBLE, busy_times, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    // Keep every rank's chunk count to verify the partitioning was even
-    MPI_Gather(&chunks_done, 1, MPI_LONG, chunk_counts, 1, MPI_LONG, 0, MPI_COMM_WORLD);
     int status = 0;
-    //Root prints the results and writes the primes to a file
+    long primes = 0;
+    double output_time = 0, overall_time = 0;
     if (my_rank == 0) {
-
-        long count = report_primes(upper_bound, chunk_size, size, gathered_flags, indecies);
-
-        if (count < 0) {
-            status = 1;
-        } 
-        else {
-            double sum = 0, maximum = 0;
-
-            for (int r = 0; r < size; r++) {
-                sum += busy_times[r];
-                
-                if (busy_times[r] > maximum) maximum = busy_times[r];
-                printf("  rank %-3d candidates=%-10d chunks=%-6ld busy=%.6f s\n", r, candidates_per_process[r], chunk_counts[r], busy_times[r]);
-            }
-
-            if (sum > 0)
-                printf("Imbalance (slowest/average) = %.4f\n", maximum / (sum / size));
-            else
-                printf("Imbalance: unavailable (below timer resolution).\n");
-
-            printf("n=%ld processes=%d chunk_size=%ld primes=%ld\n", upper_bound, size, chunk_size, count);
-            printf("Search + gather time: %.6f seconds\n", search_gather_time);
-            printf("Slowest local search: %.6f seconds\n", maximum);
-            printf("Sorted primes written to %s\n", FILE_NAME);
-        }
+        primes = report_primes(upper_bound, chunk_size, size, gathered_flags, indecies);
+        double finished = MPI_Wtime();
+        output_time = finished - output_start;
+        overall_time = finished - overall_start;
+        if (primes < 0) status = 1;
     }
 
-    MPI_Bcast(&status, 1, MPI_INT, 0, MPI_COMM_WORLD); //same exist code
-    //Free the allocated memory for the flags, gathered_flags, candidates_per_process, indecies, busy_times, and chunk_counts arrays
+    // Collect diagnostics AFTER the measured file close. These do not contribute
+    // to overall_s. Per-rank durations use local clocks, never cross-host timestamps.
+    MPI_Bcast(&status, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Gather(&busy, 1, MPI_DOUBLE, busy_times, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Gather(&chunks_done, 1, MPI_LONG, chunk_counts, 1, MPI_LONG, 0, MPI_COMM_WORLD);
+    if (my_rank == 0 && status == 0) {
+        double sum = 0, maximum = 0;
+        for (int r = 0; r < size; r++) {
+            sum += busy_times[r];
+            if (busy_times[r] > maximum) maximum = busy_times[r];
+            printf("  rank %-3d candidates=%-10d chunks=%-6ld busy=%.9f s\n",
+                   r, candidates_per_process[r], chunk_counts[r], busy_times[r]);
+        }
+        double imbalance = sum > 0 ? maximum / (sum / size) : 0;
+        printf("Imbalance (slowest/average) = %.6f\n", imbalance);
+        printf("Overall wall-clock time: %.9f seconds\n", overall_time);
+        printf("Sorted primes written to %s\n", FILE_NAME);
+        // Root phases sum to overall_s. compute_max_s is a separate diagnostic;
+        // gather_root_s can include waiting for slower ranks, so do not add both.
+        printf("RESULT,mpi,%ld,%d,1,%ld,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f\n",
+               upper_bound, size, primes, overall_time, setup_time, busy,
+               gather_time, output_time, maximum, imbalance);
+    }
+
     free(flags);
     free(gathered_flags);
     free(candidates_per_process);
     free(indecies);
     free(busy_times);
     free(chunk_counts);
-
     MPI_Finalize();
-
     return status;
 }
