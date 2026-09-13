@@ -1,0 +1,11 @@
+#!/bin/bash
+#SBATCH --job-name=mpi_pthreads_4x4_job	 ### name your job 
+#SBATCH --time=00:10:00		 ### hh:mm:ss or dd-hh:mm:ss
+#SBATCH --mem=16G				 ### memory setting is max @ 4 GB per process
+#SBATCH --ntasks=4				 ### mpi # of processes
+#SBATCH --cpus-per-task=4		 ### multi-threaded processes
+#SBATCH --ntasks-per-node=2   ### two processes per node
+
+#SBATCH --partition=defq
+
+srun hybrid

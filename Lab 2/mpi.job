@@ -1,0 +1,23 @@
+#!/bin/bash
+#SBATCH --job-name=mpi_np_32_job	 ### name your job 
+#SBATCH --time=00:10:00		 ### hh:mm:ss or dd-hh:mm:ss
+#SBATCH --mem=16G				 ### memory setting is max @ 500 MP per process/core
+#SBATCH --ntasks=32			 ### equivalent to -np 32
+#SBATCH --cpus-per-task=1		 ### single-threaded processes
+#SBATCH --ntasks-per-node=16  ### this is the max as each node has 16 cores only
+
+#SBATCH --partition=defq
+
+module load openmpi/4.1.5-gcc-11.2.0-ux65npg
+
+if [ ! -f mpi ]
+then
+    mpicc -o mpi mpi.c
+else
+    if [ mpi.c -nt mpi]
+    then
+        mpicc -o mpi mpi.c
+    fi
+fi
+
+srun mpi

@@ -70,15 +70,26 @@ LABEL = {
     "hybrid":  "Hybrid MPI+OpenMP (Task 2)",
 }
 
-COLOR = {"serial": "#444444", "pthread": "#1f77b4", "mpi": "#d62728", "hybrid": "#2ca02c"}
-MARKER = {"serial": "o", "pthread": "s", "mpi": "^", "hybrid": "D"}
+COLOR = {"serial": "#555555", "pthread": "#ff7f0e", "mpi": "#1f77b4",
+         "hybrid": "#199e86"}
+THEORY_COLOR = "#8c6bb1"          # Amdahl prediction
+BUDGET_COLOR = "#8a8a8a"          # "worker budget" marker
+MARKER = {"serial": "o", "pthread": "o", "mpi": "o", "hybrid": "o"}
+SHORT = {"serial": "Serial", "pthread": "POSIX", "mpi": "MPI", "hybrid": "Hybrid"}
 
 # Output parsers -- these match the printf() formats in the four programs.
 RE_PRIMES       = re.compile(r"primes=(\d+)")
 RE_SERIAL_TIME  = re.compile(r"Time taken:\s*([0-9.]+)")
 RE_PTHREAD_TIME = re.compile(r"\btime=([0-9.]+)\s*s")
 RE_MPI_REGION   = re.compile(r"Search \+ gather time:\s*([0-9.]+)")
-RE_MPI_COMPUTE  = re.compile(r"Slowest local search:\s*([0-9.]+)")
+# Accept the timing labels used by slightly different MPI/hybrid implementations,
+# for example "Slowest local search: 1.23", "... time = 1.23", and scientific
+# notation.  Figures 6 and 7 need this value for their Amdahl predictions.
+RE_MPI_COMPUTE  = re.compile(
+    r"Slowest\s+local\s+search(?:\s+time)?\s*[:=]\s*"
+    r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?\d+)?)",
+    re.IGNORECASE,
+)
 RE_IMBALANCE    = re.compile(r"Imbalance \(slowest/average\)\s*=\s*([0-9.]+)")
 RE_BUSY         = re.compile(r"busy=([0-9.]+)")
 
@@ -488,24 +499,35 @@ class Harness:
         return rec, rc, (err or out)
 
     # -- repeated, cached measurement -------------------------------------
-    def measure(self, impl, n, procs=1, threads=1, experiment="", reps=None, quiet=False):
+    def measure(self, impl, n, procs=1, threads=1, experiment="", reps=None,
+                quiet=False, require_compute=False):
         reps = reps or self.cfg.reps
         key = (impl, int(n), int(procs), int(threads))
-        have = self.store.get(key, [])
+        all_runs = self.store.get(key, [])
+        # Old result files may contain successful runs whose timing output did
+        # not match the parser, leaving compute_s blank.  Do not treat those as
+        # complete when the Amdahl decomposition specifically needs compute_s.
+        have = ([r for r in all_runs if r.get("compute_s") is not None]
+                if require_compute else all_runs)
         need = reps - len(have)
+        next_rep = len(all_runs) + 1
         for r in range(need):
-            rec, rc, _ = self.run_once(impl, n, procs, threads, experiment, len(have) + r + 1)
+            rec, rc, _ = self.run_once(
+                impl, n, procs, threads, experiment, next_rep + r)
             if rc == 0:
                 self.store.setdefault(key, []).append(rec)
             else:
                 say(f"    ! {impl} n={n} P={procs} T={threads} failed (rc={rc})")
                 break
         runs = self.store.get(key, [])
+        if require_compute:
+            runs = [r for r in runs if r.get("compute_s") is not None]
         agg = aggregate(impl, n, procs, threads, runs, self.cfg.stat)
         if not quiet:
             wall = agg["wall"]
+            wall_text = "   n/a  " if wall is None else f"{wall:8.3f}s"
             say(f"    {impl:8s} n={n:<12d} P={procs:<3d} T={threads:<3d} "
-                f"wall={wall:8.3f}s  compute={_f(agg['compute'])}  reps={len(runs)}")
+                f"wall={wall_text}  compute={_f(agg['compute'])}  reps={len(runs)}")
         return agg
 
 
@@ -570,25 +592,6 @@ def worker_values(cores, max_workers):
             vals.add(v)
     vals.add(max_workers)
     return sorted(v for v in vals if 1 <= v <= max_workers)
-
-
-def hybrid_configs(cores, max_workers, proc_list=None):
-    """(procs, threads) pairs to sweep for the hybrid program."""
-    proc_list = proc_list or [p for p in (1, 2, 4, 8) if p <= max(2, cores)]
-    thread_list = [t for t in (1, 2, 3, 4, 6, 8, 12, 16) if t <= max_workers]
-    pairs = set()
-    for p in proc_list:
-        for t in thread_list:
-            if p * t <= max_workers:
-                pairs.add((p, t))
-    # Always include the "balanced" diagonal and the two extremes.
-    k = 1
-    while k * k <= max_workers:
-        pairs.add((k, k))
-        k += 1
-    pairs.add((1, min(cores, max_workers)))
-    pairs.add((min(cores, max_workers), 1))
-    return sorted(pairs)
 
 
 def calibrate(h: Harness, cfg, cores):
@@ -705,18 +708,16 @@ def experiment_validate(h: Harness, n_check=2_000_000):
     return {"n": n_check, "counts": counts, "digests": digests, "agree": all_ok}
 
 
-def experiment_n_sweep(h: Harness, ns, cores, hyb_pt):
+def experiment_n_sweep(h: Harness, ns, cores):
     """Figures 1 and 2: runtime and speed-up against increasing n."""
-    hr(f"E1  Increasing problem size n  ({len(ns)} sizes, all workers = {cores})")
-    p_h, t_h = hyb_pt
+    hr(f"E1  Increasing problem size n  ({len(ns)} sizes, {cores} workers each)")
     rows = []
     for i, n in enumerate(ns, 1):
         say(f"  [{i}/{len(ns)}] n = {n:,}")
-        s = h.measure("serial", n, 1, 1, "n_sweep")
+        s = h.measure("serial", n, 1, 1, "n_sweep")       # speed-up baseline
         pt = h.measure("pthread", n, 1, cores, "n_sweep")
         mp = h.measure("mpi", n, cores, 1, "n_sweep")
-        hy = h.measure("hybrid", n, p_h, t_h, "n_sweep")
-        rows.append({"n": n, "serial": s, "pthread": pt, "mpi": mp, "hybrid": hy})
+        rows.append({"n": n, "serial": s, "pthread": pt, "mpi": mp})
     return rows
 
 
@@ -736,26 +737,42 @@ def experiment_scaling(h: Harness, n_fixed, cores, max_workers):
 def experiment_hybrid_threads(h: Harness, n_fixed, cores, max_workers, p0):
     """Figure 4: hybrid thread scaling at a fixed MPI process count."""
     ts = [t for t in worker_values(cores, max_workers) if p0 * t <= max_workers]
-    hr(f"E3  Hybrid thread scaling with {p0} MPI process(es)  (threads: {ts})")
+    hr(f"E3  Hybrid ({p0} MPI processes x H threads) vs MPI at equal total "
+       f"workers  (H: {ts})")
     rows = []
     for t in ts:
         hy = h.measure("hybrid", n_fixed, p0, t, "hybrid_threads")
-        mp_equal = h.measure("mpi", n_fixed, p0 * t, 1, "hybrid_threads")
-        rows.append({"threads": t, "hybrid": hy, "mpi_equal_workers": mp_equal})
-    mp_fixed = h.measure("mpi", n_fixed, p0, 1, "hybrid_threads")
-    return rows, mp_fixed
-
-
-def experiment_hybrid_grid(h: Harness, n_fixed, cores, max_workers, cfgs):
-    """Figures 5 and 7: the (processes x threads) grid, plus matched pthread runs."""
-    hr(f"E4  Hybrid process x thread grid  ({len(cfgs)} configurations)")
-    rows = []
-    for p, t in cfgs:
-        hy = h.measure("hybrid", n_fixed, p, t, "hybrid_grid")
-        pt = h.measure("pthread", n_fixed, 1, p * t, "hybrid_grid")
-        rows.append({"procs": p, "threads": t, "workers": p * t,
-                     "hybrid": hy, "pthread": pt})
+        # Task 1 MPI given the same TOTAL worker budget: p0 * t processes.
+        mp = h.measure("mpi", n_fixed, p0 * t, 1, "hybrid_threads")
+        rows.append({"threads": t, "hybrid": hy, "mpi": mp})
     return rows
+
+
+def experiment_hybrid_slices(h: Harness, n_fixed, cores, max_workers, p0, h0):
+    """
+    Figures 5 and 7 vary processes and threads one at a time, each against a
+    POSIX-threads run with the SAME total thread count (P x H).
+    """
+    ps = [p for p in worker_values(cores, max_workers) if p * h0 <= max_workers]
+    hs = [t for t in worker_values(cores, max_workers) if p0 * t <= max_workers]
+    hr(f"E4  Hybrid slices vs POSIX at equal total threads "
+       f"(P with H={h0}: {ps};  H with P={p0}: {hs})")
+
+    vary_p = []
+    for p in ps:
+        hy = h.measure("hybrid", n_fixed, p, h0, "hybrid_slices")
+        pt = h.measure("pthread", n_fixed, 1, p * h0, "hybrid_slices")
+        vary_p.append({"x": p, "procs": p, "threads": h0, "workers": p * h0,
+                       "hybrid": hy, "pthread": pt})
+
+    vary_h = []
+    for t in hs:
+        hy = h.measure("hybrid", n_fixed, p0, t, "hybrid_slices")
+        pt = h.measure("pthread", n_fixed, 1, p0 * t, "hybrid_slices")
+        vary_h.append({"x": t, "procs": p0, "threads": t, "workers": p0 * t,
+                       "hybrid": hy, "pthread": pt})
+
+    return {"vary_p": vary_p, "vary_h": vary_h, "p0": p0, "h0": h0}
 
 
 def experiment_amdahl(h: Harness, n_fixed, cores):
@@ -780,7 +797,7 @@ def experiment_amdahl(h: Harness, n_fixed, cores):
     """
     hr(f"E5  Amdahl decomposition at fixed n = {n_fixed:,}")
     out = {}
-    ser = h.measure("serial", n_fixed, 1, 1, "amdahl")
+    ser = h.measure("serial", n_fixed, 1, 1, "amdahl", require_compute=True)
     out["serial"] = ser
     if ser["wall"] and ser["compute"]:
         f = max(0.0, (ser["wall"] - ser["compute"]) / ser["wall"])
@@ -788,7 +805,7 @@ def experiment_amdahl(h: Harness, n_fixed, cores):
         say(f"    serial wall={ser['wall']:.3f}s  parallelisable loop="
             f"{ser['compute']:.3f}s  ->  f = {f:.4f}  (max speed-up {1/f if f>0 else float('inf'):.1f}x)")
     for impl, p, t in (("mpi", 1, 1), ("pthread", 1, 1), ("hybrid", 1, 1)):
-        one = h.measure(impl, n_fixed, p, t, "amdahl")
+        one = h.measure(impl, n_fixed, p, t, "amdahl", require_compute=True)
         out[impl + "_1"] = one
         if one["wall"] and one["compute"]:
             ovh = one["wall"] - one["compute"]
@@ -797,6 +814,9 @@ def experiment_amdahl(h: Harness, n_fixed, cores):
             say(f"    {impl:8s} on 1 worker: wall={one['wall']:.3f}s  "
                 f"compute={one['compute']:.3f}s  non-parallel part={ovh:.3f}s "
                 f"(f_eff={ovh/one['wall']:.4f})")
+        else:
+            say(f"    ! {impl}: could not parse the one-worker compute time; "
+                "Figures 6/7 may be unavailable")
     # Launch overhead of mpirun itself, measured with a trivial problem size.
     launch = {}
     for p in (1, 2, max(2, cores)):
@@ -838,40 +858,71 @@ def setup_mpl():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    for style in ("seaborn-v0_8-whitegrid", "seaborn-whitegrid"):
+        try:
+            plt.style.use(style)
+            break
+        except Exception:
+            continue
     plt.rcParams.update({
-        "figure.figsize": (9.0, 5.6), "figure.dpi": 140,
-        "axes.grid": True, "grid.alpha": 0.3, "grid.linestyle": ":",
-        "axes.titlesize": 12, "axes.labelsize": 11,
-        "legend.fontsize": 9, "legend.framealpha": 0.9,
-        "font.size": 10, "savefig.bbox": "tight",
+        "figure.figsize": (10.0, 5.6), "figure.dpi": 150,
+        "figure.facecolor": "white", "axes.facecolor": "white",
+        "axes.grid": True, "grid.color": "#dddddd", "grid.linewidth": 0.8,
+        "grid.linestyle": "-", "axes.edgecolor": "#444444", "axes.linewidth": 0.9,
+        "axes.titlesize": 13, "axes.labelsize": 11.5,
+        "xtick.labelsize": 10.5, "ytick.labelsize": 10.5,
+        "legend.fontsize": 10, "legend.frameon": True, "legend.framealpha": 0.95,
+        "legend.edgecolor": "#cccccc", "legend.loc": "upper left",
+        "lines.linewidth": 1.9, "lines.markersize": 6.5,
+        "font.size": 11, "savefig.bbox": "tight", "savefig.facecolor": "white",
     })
     return plt
 
 
-def integer_xaxis(ax):
+def speedup(base, par):
+    """Speed-up and its uncertainty, propagated from both run-to-run spreads."""
+    if not base or not par or not base.get("wall") or not par.get("wall"):
+        return None, None
+    sp = base["wall"] / par["wall"]
+    rb = (base.get("wall_sd") or 0.0) / base["wall"]
+    rp = (par.get("wall_sd") or 0.0) / par["wall"]
+    return sp, sp * math.sqrt(rb * rb + rp * rp)
+
+
+def series(base, rows, key, xkey):
+    """Pull (xs, speed-ups, errors) for one implementation out of a row list."""
+    xs, ys, es = [], [], []
+    for r in rows:
+        sp, err = speedup(base, r.get(key))
+        if sp is not None:
+            xs.append(r[xkey])
+            ys.append(sp)
+            es.append(err)
+    return xs, ys, es
+
+
+def draw(ax, xs, ys, es, color, label, dashed=False, marker="o"):
+    ax.errorbar(xs, ys, yerr=None, color=color, marker=marker, capsize=3.5,
+                capthick=1.1, elinewidth=1.1, label=label,
+                linestyle="--" if dashed else "-",
+                markeredgecolor="white", markeredgewidth=0.6)
+
+
+def budget_line(ax, x):
+    """Dotted marker where the total worker count equals the core count."""
+    if x and x >= 1:
+        ax.axvline(x, color=BUDGET_COLOR, ls=":", lw=1.4, label="Worker budget")
+
+
+def tidy(ax, values, integer_x=True, zero_base=True):
+    """Axis limits driven by the plotted data, never by a reference line."""
     from matplotlib.ticker import MaxNLocator
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-
-
-def cap_yaxis(ax, values, headroom=1.18):
-    """Keep the plot readable when the Amdahl ceiling is far above the data."""
+    if integer_x:
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     vals = [v for v in values if v is not None and math.isfinite(v)]
-    if not vals:
-        return None
-    top = max(vals) * headroom
-    ax.set_ylim(0, top)
-    return top
-
-
-def annotate_cores(ax, cores, phys, max_x):
-    if cores <= max_x:
-        ax.axvline(cores, color="k", lw=0.9, ls="--", alpha=0.55)
-        ax.text(cores, ax.get_ylim()[1] * 0.97, f" {cores} logical cores",
-                rotation=90, va="top", ha="left", fontsize=8, alpha=0.75)
-    if phys and phys != cores and phys <= max_x:
-        ax.axvline(phys, color="k", lw=0.8, ls=":", alpha=0.45)
-        ax.text(phys, ax.get_ylim()[1] * 0.97, f" {phys} physical cores",
-                rotation=90, va="top", ha="left", fontsize=8, alpha=0.6)
+    if vals:
+        top = max(vals) * 1.12
+        ax.set_ylim(0 if zero_base else min(vals) * 0.9, top)
 
 
 def make_figures(res, cfg, sysinfo, figdir: Path):
@@ -879,268 +930,262 @@ def make_figures(res, cfg, sysinfo, figdir: Path):
     figdir.mkdir(parents=True, exist_ok=True)
     cores = sysinfo["logical_cores"]
     phys = sysinfo["physical_cores"]
-    tag = f"{sysinfo['label']} | {cores} logical cores" + (f" / {phys} physical" if phys else "")
+    nf = res.get("n_fixed", 0)
     saved = []
 
-    def finish(fig, ax, name, title, xlabel, ylabel, legend_loc="best"):
-        ax.set_title(f"{title}\n{tag}", fontsize=11)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-        ax.legend(loc=legend_loc)
-        path = figdir / name
-        fig.savefig(path)
+    footnote = (f"{sysinfo['label']}  |  {cores} logical cores"
+                + (f" ({phys} physical)" if phys else "")
+                + f"  |  {cfg.stat} of {cfg.reps} runs, error bars = 1 s.d.")
+
+    def finish(fig, name):
+        fig.text(0.995, -0.02, footnote, ha="right", va="top",
+                 fontsize=7.5, color="#777777")
+        for ext in ("png", "pdf"):
+            path = figdir / f"{name}.{ext}"
+            fig.savefig(path)
+            if ext == "png":
+                saved.append(path)
         plt.close(fig)
-        saved.append(path)
-        say(f"  wrote {path.name}")
+        say(f"  wrote {name}.png / .pdf")
 
     # ---- Figure 1: runtime vs n -------------------------------------------
     sweep = res.get("n_sweep") or []
     if sweep:
         fig, ax = plt.subplots()
         ns = [r["n"] for r in sweep]
-        for impl in ("serial", "pthread", "mpi", "hybrid"):
+        for impl, lbl in (("mpi", f"MPI: {cores} processes"),
+                          ("pthread", f"POSIX: {cores} threads")):
             ys = [r[impl]["wall"] for r in sweep]
-            if any(y is not None for y in ys):
-                lbl = LABEL[impl]
-                if impl == "hybrid":
-                    lbl += f" [{res['hybrid_pt'][0]}x{res['hybrid_pt'][1]}]"
-                elif impl != "serial":
-                    lbl += f" [{cores} workers]"
-                ax.plot(ns, ys, marker=MARKER[impl], color=COLOR[impl], lw=1.6,
-                        ms=4, label=lbl)
+            es = [r[impl].get("wall_sd") or 0 for r in sweep]
+            draw(ax, ns, ys, es, COLOR[impl], lbl)
         ax.set_xscale("log")
         ax.set_yscale("log")
-        finish(fig, ax, "fig1_runtime_vs_n.png",
-               "Fig 1  Wall-clock runtime vs problem size n",
-               "n (upper bound on primes, log scale)", "wall-clock time (s, log scale)")
+        ax.set_xlabel("Upper bound n")
+        ax.set_ylabel("Overall wall-clock time (seconds)")
+        ax.set_title("1. Overall runtime: MPI vs POSIX")
+        ax.legend()
+        finish(fig, "01_runtime_vs_n")
 
-        # ---- Figure 2: empirical speed-up vs n ----------------------------
+    # ---- Figure 2: empirical speed-up vs n --------------------------------
+    if sweep:
         fig, ax = plt.subplots()
-        for impl in ("pthread", "mpi", "hybrid"):
-            ys = [(r["serial"]["wall"] / r[impl]["wall"])
-                  if r[impl]["wall"] else None for r in sweep]
-            lbl = LABEL[impl] + (f" [{res['hybrid_pt'][0]}x{res['hybrid_pt'][1]}]"
-                                 if impl == "hybrid" else f" [{cores} workers]")
-            ax.plot(ns, ys, marker=MARKER[impl], color=COLOR[impl], lw=1.6, ms=4, label=lbl)
-        ax.axhline(cores, color="k", ls="--", lw=0.9, alpha=0.6,
-                   label=f"ideal = {cores} (linear speed-up)")
-        ax.axhline(1.0, color="gray", ls=":", lw=0.9, alpha=0.7, label="no speed-up")
+        allv = []
+        for impl, lbl in (("mpi", f"MPI: {cores} processes"),
+                          ("pthread", f"POSIX: {cores} threads")):
+            xs, ys, es = [], [], []
+            for r in sweep:
+                sp, err = speedup(r["serial"], r[impl])
+                if sp is not None:
+                    xs.append(r["n"])
+                    ys.append(sp)
+                    es.append(err)
+            draw(ax, xs, ys, es, COLOR[impl], lbl)
+            allv += [y + (e or 0) for y, e in zip(ys, es)]
         ax.set_xscale("log")
-        finish(fig, ax, "fig2_speedup_vs_n.png",
-               "Fig 2  Empirical speed-up vs serial baseline, increasing n",
-               "n (log scale)", "speed-up  T_serial / T_parallel")
+        ax.set_xlabel("Upper bound n")
+        ax.set_ylabel("Speed-up vs original serial")
+        ax.set_title("2. Empirical speed-up: MPI vs POSIX")
+        tidy(ax, allv, integer_x=False)
+        ax.legend()
+        finish(fig, "02_speedup_vs_n")
 
-    # ---- Figure 3: speed-up vs worker count -------------------------------
+    # ---- Figure 3: MPI vs POSIX, increasing workers -----------------------
     scal = res.get("scaling")
+    th = res.get("theory") or {}
     if scal:
-        base, rows = scal
+        base_s, rows = scal
         fig, ax = plt.subplots()
-        ws = [r["workers"] for r in rows]
-        for impl, key in (("mpi", "mpi"), ("pthread", "pthread")):
-            ys = [(base["wall"] / r[key]["wall"]) if r[key]["wall"] else None for r in rows]
-            name = "MPI processes" if impl == "mpi" else "POSIX threads"
-            ax.plot(ws, ys, marker=MARKER[impl], color=COLOR[impl], lw=1.7, ms=5,
-                    label=f"{LABEL[impl]} ({name})")
-        ax.plot(ws, ws, color="k", ls="--", lw=0.9, alpha=0.6, label="ideal (linear)")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(ws))
-        finish(fig, ax, "fig3_speedup_vs_workers.png",
-               f"Fig 3  Speed-up vs number of workers (n = {res['n_fixed']:,})",
-               "number of MPI processes / POSIX threads", "speed-up  T_serial / T_parallel")
+        budget_line(ax, cores)
+        allv = []
+        for impl, lbl in (("mpi", "MPI: P processes"),
+                          ("pthread", "POSIX: T = P threads")):
+            xs, ys, es = series(base_s, rows, impl, "workers")
+            draw(ax, xs, ys, es, COLOR[impl], lbl)
+            allv += [y + (e or 0) for y, e in zip(ys, es)]
+        ax.set_xlabel("MPI processes P / POSIX threads T")
+        ax.set_ylabel("Speed-up vs original serial")
+        ax.set_title(f"3. MPI vs POSIX speed-up | n={nf:,}")
+        tidy(ax, allv)
+        ax.legend()
+        finish(fig, "03_mpi_vs_posix_workers")
 
-    # ---- Figure 4: hybrid threads vs pure MPI -----------------------------
+    # ---- Figure 4: hybrid vs MPI at equal total workers -------------------
     ht = res.get("hybrid_threads")
-    if ht:
-        rows, mp_fixed = ht
-        base = res["serial_fixed"]
+    base = res.get("serial_fixed")
+    if ht and base:
         p0 = res["hybrid_p0"]
         fig, ax = plt.subplots()
-        ts = [r["threads"] for r in rows]
-        ys = [(base["wall"] / r["hybrid"]["wall"]) if r["hybrid"]["wall"] else None for r in rows]
-        ax.plot(ts, ys, marker="D", color=COLOR["hybrid"], lw=1.7, ms=5,
-                label=f"Hybrid Task 2: {p0} MPI process(es) x T threads")
-        if mp_fixed["wall"]:
-            ax.axhline(base["wall"] / mp_fixed["wall"], color=COLOR["mpi"], ls="-",
-                       lw=1.7, label=f"Open MPI Task 1: {p0} process(es) (no threads)")
-        ys2 = [(base["wall"] / r["mpi_equal_workers"]["wall"])
-               if r["mpi_equal_workers"]["wall"] else None for r in rows]
-        ax.plot(ts, ys2, marker="^", color=COLOR["mpi"], ls=":", lw=1.4, ms=5,
-                label=f"Open MPI Task 1 with {p0}xT processes (equal worker count)")
-        ax.plot(ts, [p0 * t for t in ts], color="k", ls="--", lw=0.9, alpha=0.6,
-                label="ideal (linear in total workers)")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores / p0, None, max(ts))
-        finish(fig, ax, "fig4_hybrid_threads_vs_mpi.png",
-               f"Fig 4  Hybrid speed-up vs threads per process (n = {res['n_fixed']:,})",
-               "OpenMP threads per MPI process", "speed-up  T_serial / T_parallel")
+        budget_line(ax, cores / p0 if p0 else None)
+        allv = []
+        for impl, lbl in (("hybrid", f"Hybrid: P={p0}, H varies"),
+                          ("mpi", f"MPI: {p0} x H processes")):
+            xs, ys, es = series(base, ht, impl, "threads")
+            draw(ax, xs, ys, es, COLOR[impl], lbl)
+            allv += [y + (e or 0) for y, e in zip(ys, es)]
+        ax.set_xlabel("Hybrid threads per MPI process H")
+        ax.set_ylabel("Speed-up vs original serial")
+        ax.set_title(f"4. Hybrid vs MPI: equal total workers | n={nf:,}")
+        tidy(ax, allv)
+        ax.legend()
+        finish(fig, "04_hybrid_vs_mpi_threads")
 
-    # ---- Figure 5: hybrid grid vs matched pthread -------------------------
-    grid = res.get("hybrid_grid")
-    if grid:
-        base = res["serial_fixed"]
-        fig, ax = plt.subplots()
-        by_p = {}
-        for r in grid:
-            by_p.setdefault(r["procs"], []).append(r)
-        palette = ["#2ca02c", "#7f2704", "#8c564b", "#e377c2", "#17becf", "#bcbd22"]
-        plist = sorted(by_p)
-        for i, p in enumerate(plist):
-            rows = sorted(by_p[p], key=lambda r: r["workers"])
-            xs = [r["workers"] for r in rows]
-            ys = [(base["wall"] / r["hybrid"]["wall"]) if r["hybrid"]["wall"] else None
-                  for r in rows]
-            ax.plot(xs, ys, marker="D", ms=4.5, lw=1.5,
-                    color=palette[i % len(palette)],
-                    label=f"Hybrid, {p} MPI process(es)")
-        seen = {}
-        for r in grid:
-            if r["pthread"]["wall"]:
-                seen[r["workers"]] = base["wall"] / r["pthread"]["wall"]
-        xs = sorted(seen)
-        ax.plot(xs, [seen[x] for x in xs], marker="s", color=COLOR["pthread"],
-                lw=1.8, ms=5, label="POSIX threads with the same total thread count")
-        ax.plot(xs, xs, color="k", ls="--", lw=0.9, alpha=0.6, label="ideal (linear)")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(xs) if xs else cores)
-        finish(fig, ax, "fig5_hybrid_vs_pthread_total_workers.png",
-               f"Fig 5  Hybrid (P x T) vs POSIX threads at equal total workers "
-               f"(n = {res['n_fixed']:,})",
-               "total workers  (MPI processes x threads per process)",
-               "speed-up  T_serial / T_parallel")
+    # ---- Figures 5 and 7 share a two-panel layout -------------------------
+    sl = res.get("hybrid_slices")
 
-    # ---- Figure 6: MPI empirical vs theoretical ---------------------------
-    th = res.get("theory")
-    if scal and th:
-        base, rows = scal
-        fig, ax = plt.subplots()
-        ws = [r["workers"] for r in rows]
-        emp = [(base["wall"] / r["mpi"]["wall"]) if r["mpi"]["wall"] else None for r in rows]
-        ax.plot(ws, emp, marker="^", color=COLOR["mpi"], lw=1.8, ms=5,
-                label="Open MPI Task 1 (measured)")
-        f = th.get("f_serial")
-        if f is not None:
-            ax.plot(ws, [amdahl(w, f) for w in ws], color="#ff7f0e", ls="-", lw=1.5,
-                    label=f"Amdahl, f = {f:.4f} from serial decomposition "
-                          f"(ceiling {1/f:.1f}x)" if f > 0 else "Amdahl")
-        ovh, one = th.get("overhead_mpi"), th.get("mpi_1")
-        if ovh is not None and one and one["compute"]:
-            ax.plot(ws, [overhead_model(w, ovh, one["compute"], base["wall"]) for w in ws],
-                    color="#9467bd", ls="--", lw=1.5,
-                    label="Amdahl + measured MPI overhead (1-process decomposition)")
-        ax.plot(ws, ws, color="k", ls="--", lw=0.9, alpha=0.6, label="ideal (linear)")
-        top = cap_yaxis(ax, [v for v in emp if v] + list(ws) +
-                        ([amdahl(max(ws), f)] if f else []))
-        if f and 0 < f and 1 / f < (top or 0):
-            ax.axhline(1 / f, color="#ff7f0e", ls=":", lw=1.0, alpha=0.7,
-                       label=f"Amdahl ceiling 1/f = {1/f:.1f}x")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(ws))
-        finish(fig, ax, "fig6_mpi_empirical_vs_theoretical.png",
-               f"Fig 6  Open MPI: empirical vs theoretical speed-up (n = {res['n_fixed']:,})",
-               "number of MPI processes", "speed-up")
+    def two_panel(name, title, plot_panel):
+        fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.2))
+        panels = (
+            (sl["vary_p"], "MPI processes P", f"Fixed H={sl['h0']}",
+             cores / sl["h0"] if sl["h0"] else None),
+            (sl["vary_h"], "Threads per MPI process H", f"Fixed P={sl['p0']}",
+             cores / sl["p0"] if sl["p0"] else None),
+        )
+        for ax, (rows, xlabel, panel_title, budget) in zip(axes, panels):
+            budget_line(ax, budget)
+            allv = plot_panel(ax, rows)
+            ax.set_xlabel(xlabel)
+            ax.set_ylabel("Speed-up vs original serial")
+            ax.set_title(panel_title)
+            tidy(ax, allv)
+            ax.legend()
+        fig.suptitle(title, fontsize=13.5, y=1.01)
+        fig.tight_layout()
+        finish(fig, name)
 
-    # ---- Figure 7: hybrid empirical vs theoretical ------------------------
-    if grid and th:
-        base = res["serial_fixed"]
+    if sl and base:
+        def panel5(ax, rows):
+            allv = []
+            for impl, lbl in (("hybrid", "Hybrid empirical"),
+                              ("pthread", "POSIX: T = P x H")):
+                xs, ys, es = series(base, rows, impl, "x")
+                draw(ax, xs, ys, es, COLOR[impl], lbl)
+                allv += [y + (e or 0) for y, e in zip(ys, es)]
+            return allv
+        two_panel("05_hybrid_vs_posix",
+                  f"5. Hybrid vs POSIX: equal total workers | n={nf:,}", panel5)
+
+    # ---- Figure 6: MPI empirical vs Amdahl --------------------------------
+    if scal and th.get("overhead_mpi") is not None and th.get("mpi_1"):
+        base_s, rows = scal
+        one = th["mpi_1"]
         fig, ax = plt.subplots()
-        best = {}
-        for r in grid:
-            if not r["hybrid"]["wall"]:
-                continue
-            s = base["wall"] / r["hybrid"]["wall"]
-            w = r["workers"]
-            if w not in best or s > best[w][0]:
-                best[w] = (s, r["procs"], r["threads"])
-        xs = sorted(best)
-        ax.plot(xs, [best[x][0] for x in xs], marker="D", color=COLOR["hybrid"],
-                lw=1.8, ms=5, label="Hybrid Task 2, best P x T at each worker count")
-        for x in xs:
-            s, p, t = best[x]
-            ax.annotate(f"{p}x{t}", (x, s), textcoords="offset points",
-                        xytext=(0, 7), ha="center", fontsize=7.5, alpha=0.85)
-        f = th.get("f_serial")
-        if f is not None:
-            ax.plot(xs, [amdahl(x, f) for x in xs], color="#ff7f0e", lw=1.5,
-                    label=f"Amdahl, f = {f:.4f} (ceiling {1/f:.1f}x)"
-                          if f > 0 else "Amdahl")
-        ovh, one = th.get("overhead_hybrid"), th.get("hybrid_1")
-        if ovh is not None and one and one["compute"]:
-            ax.plot(xs, [overhead_model(x, ovh, one["compute"], base["wall"]) for x in xs],
-                    color="#9467bd", ls="--", lw=1.5,
-                    label="Amdahl + measured hybrid overhead")
-        ax.plot(xs, xs, color="k", ls="--", lw=0.9, alpha=0.6, label="ideal (linear)")
-        top = cap_yaxis(ax, [best[x][0] for x in xs] + list(xs) +
-                        ([amdahl(max(xs), f)] if f and xs else []))
-        if f and 0 < f and 1 / f < (top or 0):
-            ax.axhline(1 / f, color="#ff7f0e", ls=":", lw=1.0, alpha=0.7,
-                       label=f"Amdahl ceiling {1/f:.1f}x")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(xs) if xs else cores)
-        finish(fig, ax, "fig7_hybrid_empirical_vs_theoretical.png",
-               f"Fig 7  Hybrid: empirical vs theoretical speed-up (n = {res['n_fixed']:,})",
-               "total workers (MPI processes x OpenMP threads)", "speed-up")
+        budget_line(ax, cores)
+        xs, ys, es = series(base_s, rows, "mpi", "workers")
+        pred = [overhead_model(x, th["overhead_mpi"], one["compute"], base_s["wall"])
+                for x in xs]
+        draw(ax, xs, pred, None, THEORY_COLOR, "MPI Amdahl prediction",
+             dashed=True, marker="s")
+        draw(ax, xs, ys, es, COLOR["mpi"], "MPI empirical")
+        ax.set_xlabel("MPI processes P")
+        ax.set_ylabel("Speed-up vs original serial")
+        ax.set_title(f"6. MPI: empirical vs theoretical speed-up | n={nf:,}")
+        tidy(ax, [y + (e or 0) for y, e in zip(ys, es)] + pred)
+        ax.legend()
+        finish(fig, "06_mpi_empirical_vs_theory")
+    else:
+        missing = []
+        if not scal:
+            missing.append("scaling data")
+        if th.get("mpi_1") is None:
+            missing.append("one-worker MPI data")
+        if th.get("overhead_mpi") is None:
+            missing.append("parsed MPI compute time")
+        say("  skipped 06_mpi_empirical_vs_theory: missing " + ", ".join(missing))
+
+    # ---- Figure 7: hybrid empirical vs Amdahl, two panels -----------------
+    if sl and base and th.get("overhead_hybrid") is not None and th.get("hybrid_1"):
+        one = th["hybrid_1"]
+
+        def panel7(ax, rows):
+            xs, ys, es = series(base, rows, "hybrid", "x")
+            ws = [r["workers"] for r in rows if r["hybrid"].get("wall")]
+            pred = [overhead_model(w, th["overhead_hybrid"], one["compute"],
+                                   base["wall"]) for w in ws]
+            draw(ax, xs, pred, None, THEORY_COLOR, "Hybrid Amdahl prediction",
+                 dashed=True, marker="s")
+            draw(ax, xs, ys, es, COLOR["hybrid"], "Hybrid empirical")
+            return [y + (e or 0) for y, e in zip(ys, es)] + pred
+        two_panel("07_hybrid_empirical_vs_theory",
+                  f"7. Hybrid: empirical vs theoretical speed-up | n={nf:,}", panel7)
+    else:
+        missing = []
+        if not sl:
+            missing.append("hybrid-slice data")
+        if not base:
+            missing.append("serial baseline")
+        if th.get("hybrid_1") is None:
+            missing.append("one-worker hybrid data")
+        if th.get("overhead_hybrid") is None:
+            missing.append("parsed hybrid compute time")
+        say("  skipped 07_hybrid_empirical_vs_theory: missing " + ", ".join(missing))
 
     # ---- Extra A: parallel efficiency -------------------------------------
     if scal:
-        base, rows = scal
+        base_s, rows = scal
         fig, ax = plt.subplots()
-        ws = [r["workers"] for r in rows]
-        for impl in ("mpi", "pthread"):
-            ys = [((base["wall"] / r[impl]["wall"]) / r["workers"] * 100)
-                  if r[impl]["wall"] else None for r in rows]
-            ax.plot(ws, ys, marker=MARKER[impl], color=COLOR[impl], lw=1.7, ms=5,
-                    label=LABEL[impl])
-        ax.axhline(100, color="k", ls="--", lw=0.9, alpha=0.6, label="ideal (100%)")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(ws))
-        finish(fig, ax, "figA_efficiency.png",
-               f"Fig A  Parallel efficiency = speed-up / workers (n = {res['n_fixed']:,})",
-               "number of workers", "efficiency (%)")
+        budget_line(ax, cores)
+        allv = []
+        for impl, lbl in (("mpi", "MPI: P processes"),
+                          ("pthread", "POSIX: T = P threads")):
+            xs, ys, es = series(base_s, rows, impl, "workers")
+            eff = [y / x * 100 for x, y in zip(xs, ys)]
+            ee = [(e or 0) / x * 100 for x, e in zip(xs, es)]
+            draw(ax, xs, eff, ee, COLOR[impl], lbl)
+            allv += [a + b for a, b in zip(eff, ee)]
+        ax.set_xlabel("MPI processes P / POSIX threads T")
+        ax.set_ylabel("Parallel efficiency (%)")
+        ax.set_title(f"A. Parallel efficiency = speed-up / workers | n={nf:,}")
+        tidy(ax, allv)
+        ax.legend()
+        finish(fig, "A_efficiency")
 
-        # ---- Extra B: Karp-Flatt experimentally determined serial fraction
+    # ---- Extra B: Karp-Flatt ----------------------------------------------
+    if scal:
+        base_s, rows = scal
         fig, ax = plt.subplots()
-        for impl in ("mpi", "pthread"):
-            xs, ys = [], []
-            for r in rows:
-                if r["workers"] > 1 and r[impl]["wall"]:
-                    e = karp_flatt(base["wall"] / r[impl]["wall"], r["workers"])
-                    if e is not None:
-                        xs.append(r["workers"])
-                        ys.append(e)
-            ax.plot(xs, ys, marker=MARKER[impl], color=COLOR[impl], lw=1.7, ms=5,
-                    label=LABEL[impl])
-        if th and th.get("f_serial") is not None:
-            ax.axhline(th["f_serial"], color="#ff7f0e", ls="--", lw=1.2,
+        budget_line(ax, cores)
+        allv = []
+        for impl, lbl in (("mpi", "MPI: P processes"),
+                          ("pthread", "POSIX: T = P threads")):
+            xs, ys, _ = series(base_s, rows, impl, "workers")
+            pairs = [(x, karp_flatt(y, x)) for x, y in zip(xs, ys) if x > 1]
+            pairs = [(x, e) for x, e in pairs if e is not None]
+            if pairs:
+                draw(ax, [a for a, _ in pairs], [b for _, b in pairs], None,
+                     COLOR[impl], lbl)
+                allv += [b for _, b in pairs]
+        if th.get("f_serial") is not None:
+            ax.axhline(th["f_serial"], color=THEORY_COLOR, ls="--", lw=1.4,
                        label=f"f from serial decomposition = {th['f_serial']:.4f}")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(ws))
-        finish(fig, ax, "figB_karp_flatt.png",
-               "Fig B  Karp-Flatt metric: experimentally determined serial fraction\n"
-               "(flat = pure Amdahl limit, rising = parallel overhead dominates)",
-               "number of workers", "experimentally determined serial fraction e")
+            allv.append(th["f_serial"])
+        ax.set_xlabel("MPI processes P / POSIX threads T")
+        ax.set_ylabel("Experimentally determined serial fraction e")
+        ax.set_title("B. Karp-Flatt metric (rising = parallel overhead grows)")
+        tidy(ax, allv)
+        ax.legend()
+        finish(fig, "B_karp_flatt")
 
-        # ---- Extra C: load imbalance --------------------------------------
+    # ---- Extra C: load imbalance ------------------------------------------
+    if scal:
+        base_s, rows = scal
         fig, ax = plt.subplots()
-        for impl in ("mpi", "pthread"):
-            xs = [r["workers"] for r in rows if r[impl]["imbalance"]]
-            ys = [r[impl]["imbalance"] for r in rows if r[impl]["imbalance"]]
-            if xs:
-                ax.plot(xs, ys, marker=MARKER[impl], color=COLOR[impl], lw=1.7,
-                        ms=5, label=LABEL[impl])
-        if grid:
-            xs = [r["workers"] for r in grid if r["hybrid"]["imbalance"]]
-            ys = [r["hybrid"]["imbalance"] for r in grid if r["hybrid"]["imbalance"]]
-            if xs:
-                order = sorted(range(len(xs)), key=lambda i: xs[i])
-                ax.plot([xs[i] for i in order], [ys[i] for i in order], marker="D",
-                        color=COLOR["hybrid"], lw=1.2, ms=4, ls="none",
-                        label=LABEL["hybrid"])
-        ax.axhline(1.0, color="k", ls="--", lw=0.9, alpha=0.6, label="perfect balance")
-        integer_xaxis(ax)
-        annotate_cores(ax, cores, phys, max(ws))
-        finish(fig, ax, "figC_load_imbalance.png",
-               f"Fig C  Load imbalance (slowest worker / average) (n = {res['n_fixed']:,})",
-               "number of workers", "imbalance ratio")
+        budget_line(ax, cores)
+        allv = []
+        for impl, lbl in (("mpi", "MPI: P processes"),
+                          ("pthread", "POSIX: T = P threads")):
+            pts = [(r["workers"], r[impl]["imbalance"]) for r in rows
+                   if r[impl].get("imbalance")]
+            if pts:
+                draw(ax, [a for a, _ in pts], [b for _, b in pts], None,
+                     COLOR[impl], lbl)
+                allv += [b for _, b in pts]
+        ax.axhline(1.0, color=BUDGET_COLOR, ls="--", lw=1.2, label="Perfect balance")
+        ax.set_xlabel("MPI processes P / POSIX threads T")
+        ax.set_ylabel("Slowest worker / average worker")
+        ax.set_title(f"C. Load imbalance | n={nf:,}")
+        tidy(ax, allv + [1.0])
+        ax.legend()
+        finish(fig, "C_load_imbalance")
 
     return saved
 
@@ -1272,12 +1317,14 @@ def write_report(res, cfg, sysinfo, figures, path: Path):
     A("## 3. Experimental design\n")
     A(md_table(["Experiment", "What is varied", "Fixed", "Figures"], [
         ["E1 problem size", f"{len(res.get('n_sweep') or [])} values of n "
-         f"({res['ns'][0]:,} .. {res['ns'][-1]:,})", f"workers = {cores}", "1, 2"],
+         f"({res['ns'][0]:,} .. {res['ns'][-1]:,}), MPI vs pthreads",
+         f"workers = {cores}", "1, 2"],
         ["E2 worker scaling", "MPI processes / POSIX threads, 1 .. "
          f"{cfg.max_workers}", f"n = {res['n_fixed']:,}", "3, 6, A, B, C"],
-        ["E3 hybrid threads", f"threads per process, {res.get('hybrid_p0')} MPI "
-         "processes fixed", f"n = {res['n_fixed']:,}", "4"],
-        ["E4 hybrid grid", "processes x threads combinations",
+        ["E3 hybrid threads", f"threads per process H, with P={res.get('hybrid_p0')} "
+         f"fixed; MPI given P x H processes", f"n = {res['n_fixed']:,}", "4"],
+        ["E4 hybrid slices", f"P with H={res.get('hybrid_h0')} fixed, then H with "
+         f"P={res.get('hybrid_p0')} fixed; POSIX given P x H threads",
          f"n = {res['n_fixed']:,}", "5, 7"],
         ["E5 Amdahl", "decomposition into serial and parallel time",
          f"n = {res['n_fixed']:,}", "6, 7"],
@@ -1320,11 +1367,10 @@ def write_report(res, cfg, sysinfo, figures, path: Path):
                         if r[impl]["wall"] else "-")
             rows.append([f"{r['n']:,}",
                          f"{r['serial']['wall']:.3f}",
-                         f"{r['pthread']['wall']:.3f}", sp("pthread"),
                          f"{r['mpi']['wall']:.3f}", sp("mpi"),
-                         f"{r['hybrid']['wall']:.3f}", sp("hybrid")])
-        A(md_table(["n", "serial (s)", "pthread (s)", "speed-up",
-                    "MPI (s)", "speed-up", "hybrid (s)", "speed-up"], rows))
+                         f"{r['pthread']['wall']:.3f}", sp("pthread")])
+        A(md_table(["n", "serial (s)", "MPI (s)", "MPI speed-up",
+                    "pthread (s)", "pthread speed-up"], rows))
         A(f"(Full data for all {len(sweep)} sizes is in `aggregate.csv`; this table is "
           "sampled for readability.)\n")
 
@@ -1654,11 +1700,12 @@ def parse_args(argv=None):
     g = p.add_argument_group("parallelism")
     g.add_argument("--max-workers", type=int, default=2 * cores,
                    help="highest process/thread count to test (oversubscription)")
-    g.add_argument("--hybrid-config", default=None, metavar="P:T",
-                   help="processes:threads used for the hybrid in the n sweep "
-                        "(default: a balanced split of the core count)")
     g.add_argument("--hybrid-p0", type=int, default=None,
-                   help="fixed MPI process count for the Figure 4 thread sweep")
+                   help="MPI process count held fixed while threads vary "
+                        "(figures 4, and the right panel of 5 and 7)")
+    g.add_argument("--hybrid-h0", type=int, default=None,
+                   help="thread count held fixed while MPI processes vary "
+                        "(the left panel of figures 5 and 7)")
     g.add_argument("--hostfile", help="mpirun hostfile for a multi-machine run")
     g.add_argument("--mpi-extra", default="", help="extra flags passed to mpirun")
 
@@ -1680,7 +1727,7 @@ def parse_args(argv=None):
                         "(tip: /dev/shm/bench on Linux removes disk noise)")
     g.add_argument("--only", default="all",
                    help="comma list of experiments: validate,n_sweep,scaling,"
-                        "hybrid_threads,hybrid_grid,amdahl")
+                        "hybrid_threads,hybrid_slices,amdahl")
     g.add_argument("--plots-only", action="store_true",
                    help="rebuild figures and report from an existing results dir")
     g.add_argument("--merge", nargs="+", metavar="DIR",
@@ -1783,16 +1830,13 @@ def main(argv=None):
     res["ns"] = ns or [0]
     res["n_fixed"] = n_fixed
 
-    # hybrid split used for the n sweep
-    if cfg.hybrid_config:
-        p_h, t_h = (int(x) for x in cfg.hybrid_config.split(":"))
-    else:
-        p_h = 2 if cores >= 4 and cores % 2 == 0 else 1
-        t_h = max(1, cores // p_h)
-    res["hybrid_pt"] = (p_h, t_h)
     p0 = cfg.hybrid_p0 or (2 if cfg.max_workers >= 4 else 1)
-    res["hybrid_p0"] = p0
-    hyb_cfgs = hybrid_configs(cores, cfg.max_workers)
+    h0 = cfg.hybrid_h0 or (2 if cfg.max_workers >= 4 else 1)
+    res["hybrid_p0"], res["hybrid_h0"] = p0, h0
+    hyb_cfgs = sorted({(p, h0) for p in worker_values(cores, cfg.max_workers)
+                       if p * h0 <= cfg.max_workers} |
+                      {(p0, t) for t in worker_values(cores, cfg.max_workers)
+                       if p0 * t <= cfg.max_workers})
 
     # ---- time estimate ----------------------------------------------------
     if not cfg.plots_only and c:
@@ -1800,7 +1844,6 @@ def main(argv=None):
         say("")
         say(f"  Estimated total benchmarking time: ~{fmt_hms(est)} "
             f"(rough; overheads vary)")
-        say(f"  Hybrid split for the n sweep: {p_h} process(es) x {t_h} thread(s)")
         say(f"  Worker counts: {worker_values(cores, cfg.max_workers)}")
         if not cfg.yes:
             try:
@@ -1818,7 +1861,7 @@ def main(argv=None):
         res["validation"] = experiment_validate(h, min(2_000_000, max(100_000, n_fixed // 8)))
 
     if want("n_sweep"):
-        res["n_sweep"] = experiment_n_sweep(h, ns, cores, (p_h, t_h))
+        res["n_sweep"] = experiment_n_sweep(h, ns, cores)
 
     if want("scaling"):
         res["scaling"] = experiment_scaling(h, n_fixed, cores, cfg.max_workers)
@@ -1832,9 +1875,9 @@ def main(argv=None):
     if want("hybrid_threads"):
         res["hybrid_threads"] = experiment_hybrid_threads(h, n_fixed, cores,
                                                           cfg.max_workers, p0)
-    if want("hybrid_grid"):
-        res["hybrid_grid"] = experiment_hybrid_grid(h, n_fixed, cores,
-                                                    cfg.max_workers, hyb_cfgs)
+    if want("hybrid_slices"):
+        res["hybrid_slices"] = experiment_hybrid_slices(
+            h, n_fixed, cores, cfg.max_workers, p0, h0)
     # ---- reconstruct for --plots-only ------------------------------------
     if cfg.plots_only:
         res = rebuild_from_store(h, res, cores, cfg)
@@ -1895,13 +1938,11 @@ def rebuild_from_store(h: Harness, res, cores, cfg):
         return agg.get((impl, n, p, t))
 
     ns = sorted({n for (i, n, p, t) in store if i == "serial" and n > 10_000})
-    p_h, t_h = res["hybrid_pt"]
     sweep = []
     for n in ns:
         row = {"n": n}
         ok = True
-        for impl, p, t in (("serial", 1, 1), ("pthread", 1, cores),
-                           ("mpi", cores, 1), ("hybrid", p_h, t_h)):
+        for impl, p, t in (("serial", 1, 1), ("pthread", 1, cores), ("mpi", cores, 1)):
             a = get(impl, n, p, t)
             if a is None:
                 ok = False
@@ -1925,28 +1966,28 @@ def rebuild_from_store(h: Harness, res, cores, cfg):
         if rows:
             res["scaling"] = (base, rows)
 
-        grid = []
-        for (i, n, p, t) in store:
-            if i == "hybrid" and n == n_fixed:
-                pt = get("pthread", n_fixed, 1, p * t)
-                if pt:
-                    grid.append({"procs": p, "threads": t, "workers": p * t,
-                                 "hybrid": get("hybrid", n_fixed, p, t), "pthread": pt})
-        if grid:
-            res["hybrid_grid"] = sorted(grid, key=lambda r: (r["procs"], r["threads"]))
+        p0, h0 = res["hybrid_p0"], res["hybrid_h0"]
+        hyb_p = sorted({p for (i, n, p, t) in store
+                        if i == "hybrid" and n == n_fixed and t == h0})
+        hyb_h = sorted({t for (i, n, p, t) in store
+                        if i == "hybrid" and n == n_fixed and p == p0})
+        vary_p = [{"x": p, "procs": p, "threads": h0, "workers": p * h0,
+                   "hybrid": get("hybrid", n_fixed, p, h0),
+                   "pthread": get("pthread", n_fixed, 1, p * h0)} for p in hyb_p]
+        vary_h = [{"x": t, "procs": p0, "threads": t, "workers": p0 * t,
+                   "hybrid": get("hybrid", n_fixed, p0, t),
+                   "pthread": get("pthread", n_fixed, 1, p0 * t)} for t in hyb_h]
+        vary_p = [r for r in vary_p if r["hybrid"] and r["pthread"]]
+        vary_h = [r for r in vary_h if r["hybrid"] and r["pthread"]]
+        if vary_p or vary_h:
+            res["hybrid_slices"] = {"vary_p": vary_p, "vary_h": vary_h,
+                                    "p0": p0, "h0": h0}
 
-        p0 = res["hybrid_p0"]
-        ht = []
-        for t in sorted({t for (i, n, p, tt) in store
-                         if i == "hybrid" and n == n_fixed and p == p0
-                         for t in [tt]}):
-            m_eq = get("mpi", n_fixed, p0 * t, 1)
-            if m_eq:
-                ht.append({"threads": t, "hybrid": get("hybrid", n_fixed, p0, t),
-                           "mpi_equal_workers": m_eq})
-        mf = get("mpi", n_fixed, p0, 1)
-        if ht and mf:
-            res["hybrid_threads"] = (ht, mf)
+        ht = [{"threads": t, "hybrid": get("hybrid", n_fixed, p0, t),
+               "mpi": get("mpi", n_fixed, p0 * t, 1)} for t in hyb_h]
+        ht = [r for r in ht if r["hybrid"] and r["mpi"]]
+        if ht:
+            res["hybrid_threads"] = ht
 
         ser1 = base
         th = {"serial": ser1}
