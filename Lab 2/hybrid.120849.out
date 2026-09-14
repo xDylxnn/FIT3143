@@ -1,0 +1,264 @@
+  rank 0   candidates=625860     chunks=513    busy=0.035049679 s
+  rank 1   candidates=624858     chunks=513    busy=0.035139118 s
+  rank 2   candidates=624640     chunks=512    busy=0.039364742 s
+  rank 3   candidates=624640     chunks=512    busy=0.035397019 s
+Imbalance (slowest/average) = 1.086294
+Overall wall-clock time: 0.067516209 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,2500000,4,8,183072,0.067516209,0.009829775,0.035049679,0.017899377,0.004737378,0.039364742,1.086294321
+  rank 0   candidates=653134     chunks=513    busy=0.058149398 s
+  rank 1   candidates=652288     chunks=512    busy=0.034509759 s
+  rank 2   candidates=652288     chunks=512    busy=0.041991285 s
+  rank 3   candidates=652288     chunks=512    busy=0.046150758 s
+Imbalance (slowest/average) = 1.286483
+Overall wall-clock time: 0.079021919 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,2610000,4,8,190533,0.079021919,0.009801321,0.058149398,0.005993530,0.005077670,0.058149398,1.286482568
+  rank 0   candidates=682510     chunks=513    busy=0.033532965 s
+  rank 1   candidates=682496     chunks=512    busy=0.033541050 s
+  rank 2   candidates=682496     chunks=512    busy=0.042589683 s
+  rank 3   candidates=682496     chunks=512    busy=0.044531364 s
+Imbalance (slowest/average) = 1.155196
+Overall wall-clock time: 0.069758795 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,2730000,4,8,198664,0.069758795,0.010026878,0.033532965,0.020752044,0.005446908,0.044531364,1.155195592
+  rank 0   candidates=715742     chunks=513    busy=0.044263130 s
+  rank 1   candidates=714752     chunks=512    busy=0.038628959 s
+  rank 2   candidates=714752     chunks=512    busy=0.042258579 s
+  rank 3   candidates=714752     chunks=512    busy=0.052421774 s
+Imbalance (slowest/average) = 1.180854
+Overall wall-clock time: 0.079362372 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,2860000,4,8,207443,0.079362372,0.010044862,0.044263130,0.019606241,0.005448139,0.052421774,1.180853817
+  rank 0   candidates=748467     chunks=513    busy=0.043910775 s
+  rank 1   candidates=747515     chunks=513    busy=0.057909194 s
+  rank 2   candidates=747008     chunks=512    busy=0.046442619 s
+  rank 3   candidates=747008     chunks=512    busy=0.043699456 s
+Imbalance (slowest/average) = 1.206680
+Overall wall-clock time: 0.078555028 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,2990000,4,8,216129,0.078555028,0.010212188,0.043910775,0.018828332,0.005603733,0.057909194,1.206680087
+  rank 0   candidates=782990     chunks=513    busy=0.051672725 s
+  rank 1   candidates=782336     chunks=512    busy=0.039038833 s
+  rank 2   candidates=782336     chunks=512    busy=0.042841989 s
+  rank 3   candidates=782336     chunks=512    busy=0.056074993 s
+Imbalance (slowest/average) = 1.182839
+Overall wall-clock time: 0.084208245 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,3130000,4,8,225511,0.084208245,0.009801091,0.051672725,0.016864973,0.005869456,0.056074993,1.182838680
+  rank 0   candidates=818542     chunks=513    busy=0.056208732 s
+  rank 1   candidates=817152     chunks=512    busy=0.054278166 s
+  rank 2   candidates=817152     chunks=512    busy=0.064591693 s
+  rank 3   candidates=817152     chunks=512    busy=0.040426955 s
+Imbalance (slowest/average) = 1.198887
+Overall wall-clock time: 0.086868289 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,3270000,4,8,234916,0.086868289,0.010068366,0.056208732,0.014488856,0.006102335,0.064591693,1.198886882
+  rank 0   candidates=856197     chunks=513    busy=0.041356491 s
+  rank 1   candidates=854745     chunks=513    busy=0.058890828 s
+  rank 2   candidates=854528     chunks=512    busy=0.041733178 s
+  rank 3   candidates=854528     chunks=512    busy=0.065675927 s
+Imbalance (slowest/average) = 1.265088
+Overall wall-clock time: 0.085713648 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,3420000,4,8,244882,0.085713648,0.009905608,0.041356491,0.028060258,0.006391291,0.065675927,1.265088279
+  rank 0   candidates=895070     chunks=513    busy=0.060056610 s
+  rank 1   candidates=894976     chunks=512    busy=0.044934528 s
+  rank 2   candidates=894976     chunks=512    busy=0.046752273 s
+  rank 3   candidates=894976     chunks=512    busy=0.062618041 s
+Imbalance (slowest/average) = 1.168457
+Overall wall-clock time: 0.090841433 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,3580000,4,8,255390,0.090841433,0.009878778,0.060056610,0.014230587,0.006675458,0.062618041,1.168457116
+  rank 0   candidates=935262     chunks=513    busy=0.054936048 s
+  rank 1   candidates=934912     chunks=512    busy=0.049968706 s
+  rank 2   candidates=934912     chunks=512    busy=0.055374502 s
+  rank 3   candidates=934912     chunks=512    busy=0.060483446 s
+Imbalance (slowest/average) = 1.095900
+Overall wall-clock time: 0.080947557 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,3740000,4,8,266068,0.080947557,0.009885391,0.054936048,0.008961446,0.007164672,0.060483446,1.095899723
+  rank 0   candidates=977774     chunks=513    busy=0.063517085 s
+  rank 1   candidates=977408     chunks=512    busy=0.060179842 s
+  rank 2   candidates=977408     chunks=512    busy=0.047652832 s
+  rank 3   candidates=977408     chunks=512    busy=0.061208954 s
+Imbalance (slowest/average) = 1.092491
+Overall wall-clock time: 0.091395510 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,3910000,4,8,277262,0.091395510,0.009952227,0.063517085,0.010408389,0.007517809,0.063517085,1.092491168
+  rank 0   candidates=1022606    chunks=513    busy=0.054981323 s
+  rank 1   candidates=1022464    chunks=512    busy=0.064999015 s
+  rank 2   candidates=1022464    chunks=512    busy=0.068840706 s
+  rank 3   candidates=1022464    chunks=512    busy=0.059174779 s
+Imbalance (slowest/average) = 1.110353
+Overall wall-clock time: 0.097738029 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,4090000,4,8,289109,0.097738029,0.010112831,0.054981323,0.024792065,0.007851810,0.068840706,1.110352669
+  rank 0   candidates=1071294    chunks=513    busy=0.054885633 s
+  rank 1   candidates=1069568    chunks=512    busy=0.065794607 s
+  rank 2   candidates=1069568    chunks=512    busy=0.047186922 s
+  rank 3   candidates=1069568    chunks=512    busy=0.066643573 s
+Imbalance (slowest/average) = 1.136725
+Overall wall-clock time: 0.096991709 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,4280000,4,8,301543,0.096991709,0.009941587,0.054885633,0.024164209,0.008000280,0.066643573,1.136725327
+  rank 0   candidates=1118446    chunks=513    busy=0.049724446 s
+  rank 1   candidates=1117184    chunks=512    busy=0.073730345 s
+  rank 2   candidates=1117184    chunks=512    busy=0.055396163 s
+  rank 3   candidates=1117184    chunks=512    busy=0.069490011 s
+Imbalance (slowest/average) = 1.187566
+Overall wall-clock time: 0.099316992 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,4470000,4,8,313981,0.099316992,0.009992493,0.049724446,0.031181432,0.008418621,0.073730345,1.187566377
+  rank 0   candidates=1170238    chunks=513    busy=0.064191019 s
+  rank 1   candidates=1169920    chunks=512    busy=0.061449941 s
+  rank 2   candidates=1169920    chunks=512    busy=0.056852650 s
+  rank 3   candidates=1169920    chunks=512    busy=0.076741795 s
+Imbalance (slowest/average) = 1.184125
+Overall wall-clock time: 0.104502355 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,4680000,4,8,327653,0.104502355,0.009844683,0.064191019,0.021755219,0.008711434,0.076741795,1.184125216
+  rank 0   candidates=1223566    chunks=513    busy=0.058905335 s
+  rank 1   candidates=1222144    chunks=512    busy=0.085007866 s
+  rank 2   candidates=1222144    chunks=512    busy=0.072380350 s
+  rank 3   candidates=1222144    chunks=512    busy=0.068679422 s
+Imbalance (slowest/average) = 1.193206
+Overall wall-clock time: 0.110892675 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,4890000,4,8,341313,0.110892675,0.009797285,0.058905335,0.033041466,0.009148589,0.085007866,1.193206010
+  rank 0   candidates=1277678    chunks=513    busy=0.059384811 s
+  rank 1   candidates=1277440    chunks=512    busy=0.080357102 s
+  rank 2   candidates=1277440    chunks=512    busy=0.069366247 s
+  rank 3   candidates=1277440    chunks=512    busy=0.077522578 s
+Imbalance (slowest/average) = 1.121402
+Overall wall-clock time: 0.110583240 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,5110000,4,8,355603,0.110583240,0.010044692,0.059384811,0.031692999,0.009460738,0.080357102,1.121402437
+  rank 0   candidates=1337966    chunks=513    busy=0.086797916 s
+  rank 1   candidates=1337344    chunks=512    busy=0.059580881 s
+  rank 2   candidates=1337344    chunks=512    busy=0.068807843 s
+  rank 3   candidates=1337344    chunks=512    busy=0.098891644 s
+Imbalance (slowest/average) = 1.259452
+Overall wall-clock time: 0.123197615 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,5350000,4,8,371131,0.123197615,0.009887635,0.086797916,0.016650889,0.009861175,0.098891644,1.259452169
+  rank 0   candidates=1398254    chunks=513    busy=0.076128414 s
+  rank 1   candidates=1397248    chunks=512    busy=0.086551911 s
+  rank 2   candidates=1397248    chunks=512    busy=0.082466410 s
+  rank 3   candidates=1397248    chunks=512    busy=0.082181794 s
+Imbalance (slowest/average) = 1.057676
+Overall wall-clock time: 0.121811056 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,5590000,4,8,386545,0.121811056,0.009857999,0.076128414,0.025523477,0.010301166,0.086551911,1.057676351
+  rank 0   candidates=1463182    chunks=513    busy=0.088491845 s
+  rank 1   candidates=1462272    chunks=512    busy=0.088510902 s
+  rank 2   candidates=1462272    chunks=512    busy=0.093050619 s
+  rank 3   candidates=1462272    chunks=512    busy=0.095608022 s
+Imbalance (slowest/average) = 1.045864
+Overall wall-clock time: 0.127255479 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,5850000,4,8,403204,0.127255479,0.010067936,0.088491845,0.017949802,0.010745896,0.095608022,1.045864017
+  rank 0   candidates=1528110    chunks=513    busy=0.081976170 s
+  rank 1   candidates=1527296    chunks=512    busy=0.095882004 s
+  rank 2   candidates=1527296    chunks=512    busy=0.082253859 s
+  rank 3   candidates=1527296    chunks=512    busy=0.088046123 s
+Imbalance (slowest/average) = 1.101591
+Overall wall-clock time: 0.129141381 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,6110000,4,8,419898,0.129141381,0.010045012,0.081976170,0.025836187,0.011284012,0.095882004,1.101591358
+  rank 0   candidates=1597678    chunks=513    busy=0.095552431 s
+  rank 1   candidates=1597440    chunks=512    busy=0.087643133 s
+  rank 2   candidates=1597440    chunks=512    busy=0.098139746 s
+  rank 3   candidates=1597440    chunks=512    busy=0.080353877 s
+Imbalance (slowest/average) = 1.085349
+Overall wall-clock time: 0.132257587 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,6390000,4,8,437765,0.132257587,0.012026725,0.095552431,0.012728361,0.011950070,0.098139746,1.085348963
+  rank 0   candidates=1673422    chunks=513    busy=0.110843932 s
+  rank 1   candidates=1672192    chunks=512    busy=0.106370394 s
+  rank 2   candidates=1672192    chunks=512    busy=0.089475638 s
+  rank 3   candidates=1672192    chunks=512    busy=0.100451566 s
+Imbalance (slowest/average) = 1.088997
+Overall wall-clock time: 0.148390978 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,6690000,4,8,456846,0.148390978,0.010045453,0.110843932,0.015244914,0.012256679,0.110843932,1.088996566
+  rank 0   candidates=1747630    chunks=513    busy=0.094152657 s
+  rank 1   candidates=1747456    chunks=512    busy=0.107323874 s
+  rank 2   candidates=1747456    chunks=512    busy=0.108375839 s
+  rank 3   candidates=1747456    chunks=512    busy=0.088305752 s
+Imbalance (slowest/average) = 1.088772
+Overall wall-clock time: 0.146045818 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,6990000,4,8,476011,0.146045818,0.010041926,0.094152657,0.028774397,0.013076838,0.108375839,1.088771852
+  rank 0   candidates=1828014    chunks=513    busy=0.114539251 s
+  rank 1   candidates=1827328    chunks=512    busy=0.094439359 s
+  rank 2   candidates=1827328    chunks=512    busy=0.096358227 s
+  rank 3   candidates=1827328    chunks=512    busy=0.121987186 s
+Imbalance (slowest/average) = 1.141871
+Overall wall-clock time: 0.151847437 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,7310000,4,8,496294,0.151847437,0.009957558,0.114539251,0.013855029,0.013495599,0.121987186,1.141870613
+  rank 0   candidates=1913038    chunks=513    busy=0.086128352 s
+  rank 1   candidates=1912320    chunks=512    busy=0.118841447 s
+  rank 2   candidates=1912320    chunks=512    busy=0.118570503 s
+  rank 3   candidates=1912320    chunks=512    busy=0.106537092 s
+Imbalance (slowest/average) = 1.105303
+Overall wall-clock time: 0.154778232 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,7650000,4,8,517740,0.154778232,0.009801813,0.086128352,0.044688835,0.014159232,0.118841447,1.105302893
+  rank 0   candidates=2000382    chunks=513    busy=0.113390572 s
+  rank 1   candidates=1999872    chunks=512    busy=0.120906177 s
+  rank 2   candidates=1999872    chunks=512    busy=0.108056527 s
+  rank 3   candidates=1999872    chunks=512    busy=0.129409063 s
+Imbalance (slowest/average) = 1.097239
+Overall wall-clock time: 0.165711431 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,8000000,4,8,539777,0.165711431,0.009998745,0.113390572,0.027740805,0.014581309,0.129409063,1.097239456
+  rank 0   candidates=2090046    chunks=513    busy=0.140108826 s
+  rank 1   candidates=2089984    chunks=512    busy=0.114034057 s
+  rank 2   candidates=2089984    chunks=512    busy=0.105997854 s
+  rank 3   candidates=2089984    chunks=512    busy=0.132978483 s
+Imbalance (slowest/average) = 1.136511
+Overall wall-clock time: 0.175055069 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,8360000,4,8,562392,0.175055069,0.009907953,0.140108826,0.009671716,0.015366574,0.140108826,1.136510769
+  rank 0   candidates=2185886    chunks=513    busy=0.136014934 s
+  rank 1   candidates=2184704    chunks=512    busy=0.112089335 s
+  rank 2   candidates=2184704    chunks=512    busy=0.119936559 s
+  rank 3   candidates=2184704    chunks=512    busy=0.141827951 s
+Imbalance (slowest/average) = 1.112662
+Overall wall-clock time: 0.180458033 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,8740000,4,8,586237,0.180458033,0.010072774,0.136014934,0.017944882,0.016425443,0.141827951,1.112662370
+  rank 0   candidates=2286366    chunks=513    busy=0.126968728 s
+  rank 1   candidates=2284544    chunks=512    busy=0.147844265 s
+  rank 2   candidates=2284544    chunks=512    busy=0.123996156 s
+  rank 3   candidates=2284544    chunks=512    busy=0.143336698 s
+Imbalance (slowest/average) = 1.090808
+Overall wall-clock time: 0.188587397 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,9140000,4,8,611160,0.188587397,0.009834384,0.126968728,0.034867163,0.016917122,0.147844265,1.090808061
+  rank 0   candidates=2391486    chunks=513    busy=0.138104620 s
+  rank 1   candidates=2389504    chunks=512    busy=0.136551437 s
+  rank 2   candidates=2389504    chunks=512    busy=0.125941833 s
+  rank 3   candidates=2389504    chunks=512    busy=0.154407873 s
+Imbalance (slowest/average) = 1.112838
+Overall wall-clock time: 0.188907662 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,9560000,4,8,637333,0.188907662,0.010034902,0.138104620,0.023231959,0.017536181,0.154407873,1.112837980
+  rank 0   candidates=2501246    chunks=513    busy=0.158862375 s
+  rank 1   candidates=2499584    chunks=512    busy=0.135434757 s
+  rank 2   candidates=2499584    chunks=512    busy=0.148785221 s
+  rank 3   candidates=2499584    chunks=512    busy=0.148848861 s
+Imbalance (slowest/average) = 1.073519
+Overall wall-clock time: 0.206149177 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,10000000,4,8,664579,0.206149177,0.009982474,0.158862375,0.019140952,0.018163376,0.158862375,1.073519161
+  rank 0   candidates=25000190   chunks=513    busy=3.388648063 s
+  rank 1   candidates=24999936   chunks=512    busy=3.400979995 s
+  rank 2   candidates=24999936   chunks=512    busy=3.396983352 s
+  rank 3   candidates=24999936   chunks=512    busy=3.389131666 s
+Imbalance (slowest/average) = 1.002076
+Overall wall-clock time: 3.672577474 seconds
+Sorted primes written to primes2.txt
+RESULT,hybrid,100000000,4,8,5761455,3.672577474,0.009794930,3.388648063,0.096828141,0.177306340,3.400979995,1.002075533
