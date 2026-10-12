@@ -4,12 +4,19 @@
 #include <omp.h>
 #include "wsn.h"
 #include <unistd.h>
+#include <time.h>
 
 #define FREE_PORT 1
 #define OCCUPIED_PORT 0
 
 #define OCCUPY_CHANCE 0.5
 #define RELEASE_CHANCE 0.5
+
+void timestamp(char *buffer, size_t size) {
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(buffer, size, "%Y-%m-%d %H:%M:%S", tm_info);
+}
 
 int simulate_ports(int *ports, int k) {
     int free_ports = 0;
@@ -34,6 +41,19 @@ int simulate_ports(int *ports, int k) {
     return free_ports;
 };
 
+void neighbor_communication(MPI_Comm cartesian_comm, int my_availability, const int neighbor_ranks[4], int neighbor_availability[4]) {
+    MPI_Request requests[8];
+
+    for (int i = 0; i < 4; i++) {
+        neighbor_availability[i] = -1; // Initialize neighbor availability to -1 (no neighbor)
+        // Send my availability to each neighbor
+        MPI_Isend(&my_availability, 1, MPI_INT, neighbor_ranks[i], TAG_NEIGHBOR, cartesian_comm, &requests[i]);
+        // Receive neighbor availability from each neighbor
+        MPI_Irecv(&neighbor_availability[i], 1, MPI_INT, neighbor_ranks[i], TAG_NEIGHBOR, cartesian_comm, &requests[i + 4]);
+        
+    }
+    MPI_Waitall(8, requests, MPI_STATUSES_IGNORE);
+}
 
 void run_node(MPI_Comm nodes, const SimulationConfig *config) {
     MPI_Comm cartesian_comm;
@@ -59,14 +79,24 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
         ports[i] = FREE_PORT; // Initialize all ports as free
     }
 
-    // TEMPORARY test: run 5 cycles and print availability
-    for (int cycle = 1; cycle <= 5; cycle++) {
-        int availability = simulate_ports(ports, k);
-        printf("Node %d cycle %d: %d/%d free\n", rank, cycle, availability, k);
+    // TEMPORARY: fixed number of cycles until we add the terminate message
+    int total_cycles = config->simulation_time / config->cycle_time;
+
+    for (int cycle = 1; cycle <= total_cycles; cycle++) {
+        int my_availability = simulate_ports(ports, k);
+
+        int neighbor_availability[4];
+        neighbor_communication(cartesian_comm, my_availability,
+                                neighbor_ranks, neighbor_availability);
+
+        printf("Node %d cycle %d: %d free | up=%d down=%d left=%d right=%d\n",
+               rank, cycle, my_availability,
+               neighbor_availability[UP], neighbor_availability[DOWN],
+               neighbor_availability[LEFT], neighbor_availability[RIGHT]);
+
         sleep(config->cycle_time);
     }
 
     free(ports);
-
     MPI_Comm_free(&cartesian_comm);
 }
