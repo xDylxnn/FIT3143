@@ -12,10 +12,10 @@
  *   5. Shut MPI down cleanly.
  *
  * Usage:
- *   mpirun -np <m*n+1> ./wsn m n k [threshold] [cycle_time] [simulation_time]
+ *   mpirun -np <m*n+1> ./wsn m n k [threshold] [cycle_time] [simulation_time] [period] [base_mode]
  *
  * Example (3x3 grid, 6 ports, full at <=1 free port, 2 s cycles, 30 s run):
- *   mpirun -np 10 ./wsn 3 3 6 1 2 30
+ *   mpirun -np 10 ./wsn 3 3 6 1 2 30 4 3
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +26,9 @@
 #define DEFAULT_THRESHOLD  1
 #define DEFAULT_cycle_time  2
 #define DEFAULT_simulation_time    30
+#define DEFAULT_BASE_MODE  3   /* period defaults to 2 x cycle_time */
+
+double sim_start;   /* common start time, see wsn.h */
 
 /* Parse a positive integer argument; returns -1 if it is not one. */
 static int parse_positive(const char *s)
@@ -48,13 +51,15 @@ static int parse_non_negative(const char *s)
 static void print_usage(const char *prog)
 {
     fprintf(stderr,
-        "Usage: mpirun -np <m*n+1> %s m n k [threshold] [cycle_time] [simulation_time]\n"
+        "Usage: mpirun -np <m*n+1> %s m n k [threshold] [cycle_time] [simulation_time] [period] [base_mode]\n"
         "  m, n       grid rows and columns (m*n charging nodes)\n"
         "  k          charging ports per node\n"
         "  threshold  node is full when free ports <= threshold (default %d)\n"
         "  cycle_time  seconds between port updates             (default %d)\n"
-        "  simulation_time    simulation length before termination     (default %d)\n",
-        prog, DEFAULT_THRESHOLD, DEFAULT_cycle_time, DEFAULT_simulation_time);
+        "  simulation_time    simulation length before termination     (default %d)\n"
+        "  period     base station: reports newer than this count as recent (default 2 x cycle_time)\n"
+        "  base_mode  1 = blocking, 2 = nonblocking, 3 = Testsome          (default %d)\n",
+        prog, DEFAULT_THRESHOLD, DEFAULT_cycle_time, DEFAULT_simulation_time, DEFAULT_BASE_MODE);
 }
 
 /*
@@ -64,7 +69,7 @@ static void print_usage(const char *prog)
 static int parse_config(int argc, char **argv, int comm_size,
                         int rank, SimulationConfig *cfg)
 {
-    if (argc < 4 || argc > 7) return -1;
+    if (argc < 4 || argc > 9) return -1;
 
     cfg->m         = parse_positive(argv[1]);
     cfg->n         = parse_positive(argv[2]);
@@ -72,9 +77,12 @@ static int parse_config(int argc, char **argv, int comm_size,
     cfg->threshold = (argc > 4) ? parse_non_negative(argv[4]) : DEFAULT_THRESHOLD;
     cfg->cycle_time = (argc > 5) ? parse_positive(argv[5])     : DEFAULT_cycle_time;
     cfg->simulation_time   = (argc > 6) ? parse_positive(argv[6])     : DEFAULT_simulation_time;
+    cfg->period    = (argc > 7) ? parse_positive(argv[7])     : 2 * cfg->cycle_time;
+    cfg->base_mode = (argc > 8) ? parse_positive(argv[8])     : DEFAULT_BASE_MODE;
 
     if (cfg->m < 0 || cfg->n < 0 || cfg->k < 0 ||
-        cfg->threshold < 0 || cfg->cycle_time < 0 || cfg->simulation_time < 0)
+        cfg->threshold < 0 || cfg->cycle_time < 0 || cfg->simulation_time < 0 ||
+        cfg->period < 0 || cfg->base_mode < 1 || cfg->base_mode > 3)
         return -1;
 
     if (cfg->threshold >= cfg->k) {
@@ -94,56 +102,6 @@ static int parse_config(int argc, char **argv, int comm_size,
      * match the grid numbering in the spec (Node 0 = (0,0), ...). */
     cfg->base_station_rank = comm_size - 1;
     return 0;
-}
-
-// TEMPORARY test base station. Your partner replaces this for Task 2.
-void run_base(const SimulationConfig *config) {
-    double start = MPI_Wtime();
-
-    while (MPI_Wtime() - start < config->simulation_time) {
-        int flag;
-        MPI_Status status;
-        MPI_Iprobe(MPI_ANY_SOURCE, TAG_REPORT, MPI_COMM_WORLD, &flag, &status);
-        if (!flag) { usleep(1000); continue; }   // nothing yet, check again in 1 ms
-
-        Report report;
-        MPI_Recv(&report, sizeof(Report), MPI_BYTE, status.MPI_SOURCE, TAG_REPORT,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("BASE: report from node %d (%d,%d) at %s, %d free\n",
-               report.node_rank, report.x, report.y, report.timestamp, report.my_availability);
-
-        BaseStationReply reply = {0};   // count 0 = "no nodes available" (placeholder)
-        reply.send_time = MPI_Wtime();
-        MPI_Send(&reply, sizeof(reply), MPI_BYTE, report.node_rank, TAG_REPLY, MPI_COMM_WORLD);
-    }
-
-        int num_nodes = config->m * config->n;
-
-    // 1. Tell every node to stop
-    int stop = 0;
-    for (int i = 0; i < num_nodes; i++)
-        MPI_Send(&stop, 1, MPI_INT, i, TAG_TERMINATE, MPI_COMM_WORLD);
-
-    // 2. Wait for each node's DONE. Any report it sent before seeing
-    //    terminate arrives first, so receive and discard those.
-    for (int i = 0; i < num_nodes; i++) {
-        while (1) {
-            MPI_Status status;
-            MPI_Probe(i, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-            if (status.MPI_TAG == TAG_COMPLETE) {
-                int done;
-                MPI_Recv(&done, 1, MPI_INT, i, TAG_COMPLETE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                break;
-            }
-
-            Report late;
-            MPI_Recv(&late, sizeof(Report), MPI_BYTE, i, TAG_REPORT,
-                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            printf("BASE: late report from node %d (after terminate, not answered)\n", i);
-        }
-    }
-    printf("BASE: all nodes finished\n");
 }
 
 int main(int argc, char **argv)
@@ -173,11 +131,16 @@ int main(int argc, char **argv)
 
     if (rank == 0) {
         printf("WSN simulation: %d x %d grid, %d ports/node, threshold %d, "
-               "cycle %d s, run %d s, base station = rank %d\n",
-               cfg.m, cfg.n, cfg.k, cfg.threshold,
-               cfg.cycle_time, cfg.simulation_time, cfg.base_station_rank);
+               "cycle %d s, run %d s, period %d s, base version %d = rank %d\n",
+               cfg.m, cfg.n, cfg.k, cfg.threshold, cfg.cycle_time,
+               cfg.simulation_time, cfg.period, cfg.base_mode, cfg.base_station_rank);
         fflush(stdout);
     }
+
+    /* MPI_Wtime() starts at a different point in every process, so every
+     * process records the time right after a barrier and measures from it. */
+    MPI_Barrier(MPI_COMM_WORLD);
+    sim_start = MPI_Wtime();
 
     /*
      * Split off the charging nodes. The base station passes MPI_UNDEFINED and
@@ -191,7 +154,6 @@ int main(int argc, char **argv)
 
     if (is_base) {
         run_base(&cfg);
-        // fprintf(stderr, "Base station functionality not implemented yet.\n");
     } else {
         run_node(node_comm, &cfg);
         MPI_Comm_free(&node_comm);

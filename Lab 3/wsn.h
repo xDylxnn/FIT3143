@@ -14,6 +14,8 @@ typedef struct{
     int threshold;
     int cycle_time;
     int simulation_time;
+    int period;      // base station: a report newer than this (seconds) is "recent"
+    int base_mode;   // 1 = blocking, 2 = nonblocking, 3 = nonblocking + Testsome
     int base_station_rank;
 } SimulationConfig;
 
@@ -28,14 +30,15 @@ typedef struct {
     double sent_time;
 } Report;
 
-// THIS IS A PLACEHOLDER: TODO
 typedef struct {
-    int    count;                       
-    int    nodes[4 * 2];    
-    double send_time;   
+    int    count;          // 0 = no nodes available nearby
+    int    nodes[4 * 2];   // nodes 2 hops away: at most 8
+    double send_time;
 } BaseStationReply;
 
-
+// Set in main right after an MPI_Barrier. MPI_Wtime() starts at a different
+// point in every process, so all times are measured from this common start.
+extern double sim_start;
 
 void run_node(MPI_Comm nodes, const SimulationConfig *config);
 void run_base(const SimulationConfig *config);
