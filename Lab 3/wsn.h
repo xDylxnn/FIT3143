@@ -19,9 +19,9 @@ typedef struct{
 typedef struct {
     int node_rank;
     int x, y;
-    int my_availability;
+    int my_availability; // amount of free ports
     int neighbour_ranks[4]; // Up, Down, Left, Right
-    int neighbor_availability[4]; // -1 if neighbor does not exist, 0 if neighbor is unavailable, 1 if neighbor is available
+    int neighbor_availability[4]; // neighbors free ports
     int msgs_exchanged, bytes_exchanges;
     char timestamp[32];
     double sent_time;
@@ -33,3 +33,8 @@ typedef struct {
     int    nodes[4 * 2];    
     double send_time;   
 } BaseStationReply;
+
+
+
+void run_node(MPI_Comm nodes, const SimulationConfig *config);
+void run_base(const SimulationConfig *config);

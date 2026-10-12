@@ -1,33 +1,24 @@
 #include <stdio.h>
 #include <mpi.h>
+#include "wsn.h"
 
-int main(int argc, char *argv[]) {
-    MPI_Init(&argc, &argv);
+void run_node(MPI_Comm nodes, const SimulationConfig *config) {
+    MPI_Comm cartesian_comm;
+    int dimensions[2] = {config->m, config->n};
+    int periods[2] = {0, 0}; // No wrap-around
+    int rank, coords[2], neighbor_ranks[4];
 
-    int world_size;
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    // Create a 2D Cartesian communicator for the grid of nodes and get the rank and coordinates of the current node
+    // This is called by each node process to set up its own view of the grid and its neighbors.
+    MPI_Cart_create(nodes, 2, dimensions, periods, 0, &cartesian_comm);
+    MPI_Comm_rank(cartesian_comm, &rank);
+    MPI_Cart_coords(cartesian_comm, rank, 2, coords);
 
-    if (world_size != 9) {
-        printf("This program requires exactly 9 processes (got %d).\n", world_size);
-        MPI_Finalize();
-        return -1;
-    }
+    // Get the ranks of the neighboring nodes (up, down, left, right)
+    MPI_Cart_shift(cartesian_comm, 0, 1, &neighbor_ranks[UP], &neighbor_ranks[DOWN]);
+    MPI_Cart_shift(cartesian_comm, 1, 1, &neighbor_ranks[LEFT], &neighbor_ranks[RIGHT]);
 
-    int ndims = 2;
-    int dims[2] = {3, 3};      // 3 rows and 3 columns
-    int periods[2] = {0, 0};   // Non-periodic in both dimensions (0 = false, 1 = true)
-    int reorder = 1;           // Allow rank reordering
+    printf("Node %d (%d,%d): up=%d down=%d left=%d right=%d\n", rank, coords[0], coords[1], neighbor_ranks[UP], neighbor_ranks[DOWN], neighbor_ranks[LEFT], neighbor_ranks[RIGHT]);
 
-    MPI_Comm cart_comm;
-    MPI_Cart_create(MPI_COMM_WORLD, ndims, dims, periods, reorder, &cart_comm);
-
-    int rank, coords[2];
-    MPI_Comm_rank(cart_comm, &rank);
-    MPI_Cart_coords(cart_comm, rank, ndims, coords);
-
-    printf("Rank %d has coordinates (%d, %d)\n", rank, coords[0], coords[1]);
-
-    MPI_Comm_free(&cart_comm);
-    MPI_Finalize();
-    return 0;
+    MPI_Comm_free(&cartesian_comm);
 }
