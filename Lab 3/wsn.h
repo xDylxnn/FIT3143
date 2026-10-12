@@ -1,5 +1,24 @@
+#include <mpi.h>
+
+#define TAG_NEIGHBOR 1
+#define TAG_REPORT 2
+#define TAG_REPLY 3
+#define TAG_TERMINATE 4
+
+enum { UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3 };
+
+typedef struct{
+    int m, n;
+    int k;
+    int threshold;
+    int cycle_time;
+    int simulation_time;
+    int base_station_rank;
+} SimulationConfig;
+
 typedef struct {
-    int node_rank, x, y;
+    int node_rank;
+    int x, y;
     int my_availability;
     int neighbour_ranks[4]; // Up, Down, Left, Right
     int neighbor_availability[4]; // -1 if neighbor does not exist, 0 if neighbor is unavailable, 1 if neighbor is available
@@ -8,10 +27,9 @@ typedef struct {
     double sent_time;
 } Report;
 
+// THIS IS A PLACEHOLDER: TODO
 typedef struct {
-    //TODO
-} BaseStation_Reply;
-
-//TODO TAGS FOR MESSAGES BETWEEN NODES AND BASE STATION
-
-
+    int    count;                       
+    int    nodes[4 * 2];    
+    double send_time;   
+} BaseStationReply;
