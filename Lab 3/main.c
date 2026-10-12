@@ -116,6 +116,34 @@ void run_base(const SimulationConfig *config) {
         reply.send_time = MPI_Wtime();
         MPI_Send(&reply, sizeof(reply), MPI_BYTE, report.node_rank, TAG_REPLY, MPI_COMM_WORLD);
     }
+
+        int num_nodes = config->m * config->n;
+
+    // 1. Tell every node to stop
+    int stop = 0;
+    for (int i = 0; i < num_nodes; i++)
+        MPI_Send(&stop, 1, MPI_INT, i, TAG_TERMINATE, MPI_COMM_WORLD);
+
+    // 2. Wait for each node's DONE. Any report it sent before seeing
+    //    terminate arrives first, so receive and discard those.
+    for (int i = 0; i < num_nodes; i++) {
+        while (1) {
+            MPI_Status status;
+            MPI_Probe(i, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+            if (status.MPI_TAG == TAG_COMPLETE) {
+                int done;
+                MPI_Recv(&done, 1, MPI_INT, i, TAG_COMPLETE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                break;
+            }
+
+            Report late;
+            MPI_Recv(&late, sizeof(Report), MPI_BYTE, i, TAG_REPORT,
+                     MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            printf("BASE: late report from node %d (after terminate, not answered)\n", i);
+        }
+    }
+    printf("BASE: all nodes finished\n");
 }
 
 int main(int argc, char **argv)

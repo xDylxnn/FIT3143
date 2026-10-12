@@ -94,14 +94,16 @@ Report create_report(int node_rank, int x, int y, int my_availability, const int
     return report;
 }
 
-void check_for_base_station_reply(int rank, int base_station_rank) {
-    MPI_Status status;
-    int flag;
-    BaseStationReply reply;
+void handle_base_station_message(int rank, int base_station_rank, int *terminated, MPI_Status *status) {
+    if (status->MPI_TAG == TAG_TERMINATE) {
+        int terminate_signal;
+        MPI_Recv(&terminate_signal, 1, MPI_INT, base_station_rank, TAG_TERMINATE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        *terminated = 1;
+        printf("Node %d received terminate signal from base station\n", rank);
 
-    MPI_Iprobe(base_station_rank, TAG_REPLY, MPI_COMM_WORLD, &flag, &status);
-    while (flag) {
-        MPI_Recv(&reply, sizeof(BaseStationReply), MPI_BYTE, base_station_rank, TAG_REPLY, MPI_COMM_WORLD, &status);
+    } else if (status->MPI_TAG == TAG_REPLY) {
+        BaseStationReply reply;
+        MPI_Recv(&reply, sizeof(BaseStationReply), MPI_BYTE, base_station_rank, TAG_REPLY, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         
         if (reply.count > 0) {
             printf("Node %d received reply from base station: %d nodes, send_time=%.2f\n", rank, reply.count, reply.send_time);
@@ -111,9 +113,18 @@ void check_for_base_station_reply(int rank, int base_station_rank) {
         } else {
             printf("Node %d received reply from base station: no nodes available\n", rank);
         }
-
-        MPI_Iprobe(base_station_rank, TAG_REPLY, MPI_COMM_WORLD, &flag, &status);
     }
+}
+
+void check_base_station(int rank, int base_station_rank, int *terminated) {
+        MPI_Status status;
+        int flag;
+    
+        MPI_Iprobe(base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+        while (flag) {
+            handle_base_station_message(rank, base_station_rank, terminated, &status);
+            MPI_Iprobe(base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+        }
 }
 
 void run_node(MPI_Comm nodes, const SimulationConfig *config) {
@@ -140,14 +151,19 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
         ports[i] = FREE_PORT; // Initialize all ports as free
     }
 
-    // TEMPORARY: fixed number of cycles until we add the terminate message
-    int total_cycles = config->simulation_time / config->cycle_time;
-
     Report report;
     MPI_Request report_request = MPI_REQUEST_NULL;
 
-    for (int cycle = 1; cycle <= total_cycles; cycle++) {
-        check_for_base_station_reply(rank, config->base_station_rank);
+    int terminated = 0;
+    for (int cycle = 1; ; cycle++) {
+        check_base_station(rank, config->base_station_rank, &terminated);
+
+        int stop_all_nodes;
+        MPI_Allreduce(&terminated, &stop_all_nodes, 1, MPI_INT, MPI_LOR, cartesian_comm);
+        if (stop_all_nodes) {
+            printf("Node %d cycle %d: terminating\n", rank, cycle);
+            break;
+        }
 
         int my_availability = simulate_ports(ports, k);
 
@@ -182,7 +198,18 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
         sleep(config->cycle_time);
     }
 
+    // Handle any remaining messages from the base station after termination
+    while (!terminated) {
+        MPI_Status status;
+        // Use Probe instead of IProbe to ensure CPU is not wasted in a busy wait loop. This will block until a message is available.
+        MPI_Probe(config->base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        handle_base_station_message(rank, config->base_station_rank, &terminated, &status);
+    }
+
     if (report_request != MPI_REQUEST_NULL) MPI_Wait(&report_request, MPI_STATUS_IGNORE);
+
+    MPI_Send(&rank, 1, MPI_INT, config->base_station_rank, TAG_COMPLETE, MPI_COMM_WORLD);
+    printf("Node %d: sent complete signal to base station\n", rank);
 
     free(ports);
     MPI_Comm_free(&cartesian_comm);

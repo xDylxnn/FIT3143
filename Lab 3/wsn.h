@@ -4,6 +4,7 @@
 #define TAG_REPORT 2
 #define TAG_REPLY 3
 #define TAG_TERMINATE 4
+#define TAG_COMPLETE 5
 
 enum { UP = 0, DOWN = 1, LEFT = 2, RIGHT = 3 };
 
