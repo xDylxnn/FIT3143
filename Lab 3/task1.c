@@ -1,6 +1,39 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <mpi.h>
+#include <omp.h>
 #include "wsn.h"
+#include <unistd.h>
+
+#define FREE_PORT 1
+#define OCCUPIED_PORT 0
+
+#define OCCUPY_CHANCE 0.5
+#define RELEASE_CHANCE 0.5
+
+int simulate_ports(int *ports, int k) {
+    int free_ports = 0;
+
+    #pragma omp parallel for num_threads(k) reduction(+:free_ports)
+    for (int i = 0; i < k; i++) {
+        if (ports[i] == FREE_PORT) {
+            // Random chance to occupy a free port
+            if ((double)rand() / RAND_MAX < OCCUPY_CHANCE) {
+                ports[i] = OCCUPIED_PORT;
+            } else {
+                free_ports++;
+            }
+        } else {
+            // Random chance to release an occupied port
+            if ((double)rand() / RAND_MAX < RELEASE_CHANCE) {
+                ports[i] = FREE_PORT;
+                free_ports++;
+            }
+        }
+    }
+    return free_ports;
+};
+
 
 void run_node(MPI_Comm nodes, const SimulationConfig *config) {
     MPI_Comm cartesian_comm;
@@ -19,6 +52,21 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
     MPI_Cart_shift(cartesian_comm, 1, 1, &neighbor_ranks[LEFT], &neighbor_ranks[RIGHT]);
 
     printf("Node %d (%d,%d): up=%d down=%d left=%d right=%d\n", rank, coords[0], coords[1], neighbor_ranks[UP], neighbor_ranks[DOWN], neighbor_ranks[LEFT], neighbor_ranks[RIGHT]);
+
+    int k = config->k;
+    int *ports = (int *)malloc(k * sizeof(int));
+    for (int i = 0; i < k; i++) {
+        ports[i] = FREE_PORT; // Initialize all ports as free
+    }
+
+    // TEMPORARY test: run 5 cycles and print availability
+    for (int cycle = 1; cycle <= 5; cycle++) {
+        int availability = simulate_ports(ports, k);
+        printf("Node %d cycle %d: %d/%d free\n", rank, cycle, availability, k);
+        sleep(config->cycle_time);
+    }
+
+    free(ports);
 
     MPI_Comm_free(&cartesian_comm);
 }
