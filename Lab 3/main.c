@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "wsn.h"
+#include <unistd.h>
 
 /* Defaults for the optional arguments */
 #define DEFAULT_THRESHOLD  1
@@ -95,6 +96,28 @@ static int parse_config(int argc, char **argv, int comm_size,
     return 0;
 }
 
+// TEMPORARY test base station. Your partner replaces this for Task 2.
+void run_base(const SimulationConfig *config) {
+    double start = MPI_Wtime();
+
+    while (MPI_Wtime() - start < config->simulation_time) {
+        int flag;
+        MPI_Status status;
+        MPI_Iprobe(MPI_ANY_SOURCE, TAG_REPORT, MPI_COMM_WORLD, &flag, &status);
+        if (!flag) { usleep(1000); continue; }   // nothing yet, check again in 1 ms
+
+        Report report;
+        MPI_Recv(&report, sizeof(Report), MPI_BYTE, status.MPI_SOURCE, TAG_REPORT,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("BASE: report from node %d (%d,%d) at %s, %d free\n",
+               report.node_rank, report.x, report.y, report.timestamp, report.my_availability);
+
+        BaseStationReply reply = {0};   // count 0 = "no nodes available" (placeholder)
+        reply.send_time = MPI_Wtime();
+        MPI_Send(&reply, sizeof(reply), MPI_BYTE, report.node_rank, TAG_REPLY, MPI_COMM_WORLD);
+    }
+}
+
 int main(int argc, char **argv)
 {
     /* Only the master thread of each process calls MPI, so FUNNELED is enough. */
@@ -139,8 +162,8 @@ int main(int argc, char **argv)
                    rank, &node_comm);
 
     if (is_base) {
-        // run_base(&cfg);
-        fprintf(stderr, "Base station functionality not implemented yet.\n");
+        run_base(&cfg);
+        // fprintf(stderr, "Base station functionality not implemented yet.\n");
     } else {
         run_node(node_comm, &cfg);
         MPI_Comm_free(&node_comm);
