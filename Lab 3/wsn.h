@@ -1,6 +1,6 @@
 #include <mpi.h>
 
-#define TAG_NEIGHBOR 1
+#define TAG_NEIGHBOUR 1
 #define TAG_REPORT 2
 #define TAG_REPLY 3
 #define TAG_TERMINATE 4
@@ -21,7 +21,7 @@ typedef struct {
     int x, y;
     int my_availability; // amount of free ports
     int neighbour_ranks[4]; // Up, Down, Left, Right
-    int neighbor_availability[4]; // neighbors free ports
+    int neighbour_availability[4]; // neighbours free ports
     int msgs_exchanged, bytes_exchanges;
     char timestamp[32];
     double sent_time;

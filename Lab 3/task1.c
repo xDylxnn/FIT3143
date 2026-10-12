@@ -41,37 +41,49 @@ int simulate_ports(int *ports, int k) {
     return free_ports;
 };
 
-void neighbor_communication(MPI_Comm cartesian_comm, int my_availability, const int neighbor_ranks[4], int neighbor_availability[4]) {
+void neighbour_communication(MPI_Comm cartesian_comm, int my_availability, const int neighbour_ranks[4], int neighbour_availability[4]) {
     MPI_Request requests[8];
 
     for (int i = 0; i < 4; i++) {
-        neighbor_availability[i] = -1; // Initialize neighbor availability to -1 (no neighbor)
-        // Send my availability to each neighbor
-        MPI_Isend(&my_availability, 1, MPI_INT, neighbor_ranks[i], TAG_NEIGHBOR, cartesian_comm, &requests[i]);
-        // Receive neighbor availability from each neighbor
-        MPI_Irecv(&neighbor_availability[i], 1, MPI_INT, neighbor_ranks[i], TAG_NEIGHBOR, cartesian_comm, &requests[i + 4]);
+        neighbour_availability[i] = -1; // Initialize neighbour availability to -1 (no neighbour)
+        // Send my availability to each neighbour
+        MPI_Isend(&my_availability, 1, MPI_INT, neighbour_ranks[i], TAG_NEIGHBOUR, cartesian_comm, &requests[i]);
+        // Receive neighbour availability from each neighbour
+        MPI_Irecv(&neighbour_availability[i], 1, MPI_INT, neighbour_ranks[i], TAG_NEIGHBOUR, cartesian_comm, &requests[i + 4]);
         
     }
     MPI_Waitall(8, requests, MPI_STATUSES_IGNORE);
+}
+
+int find_most_available_neighbour(int neighbour_availability[4], int threshold) {
+    int best_neighbour_index = -1;
+
+    for (int i = 0; i < 4; i++) {
+        if (neighbour_availability[i] > threshold && (best_neighbour_index == -1 || neighbour_availability[i] > neighbour_availability[best_neighbour_index])) {
+            best_neighbour_index = neighbour_availability[i];
+            best_neighbour_index = i;
+        }
+    }
+    return best_neighbour_index;
 }
 
 void run_node(MPI_Comm nodes, const SimulationConfig *config) {
     MPI_Comm cartesian_comm;
     int dimensions[2] = {config->m, config->n};
     int periods[2] = {0, 0}; // No wrap-around
-    int rank, coords[2], neighbor_ranks[4];
+    int rank, coords[2], neighbour_ranks[4];
 
     // Create a 2D Cartesian communicator for the grid of nodes and get the rank and coordinates of the current node
-    // This is called by each node process to set up its own view of the grid and its neighbors.
+    // This is called by each node process to set up its own view of the grid and its neighbours.
     MPI_Cart_create(nodes, 2, dimensions, periods, 0, &cartesian_comm);
     MPI_Comm_rank(cartesian_comm, &rank);
     MPI_Cart_coords(cartesian_comm, rank, 2, coords);
 
-    // Get the ranks of the neighboring nodes (up, down, left, right)
-    MPI_Cart_shift(cartesian_comm, 0, 1, &neighbor_ranks[UP], &neighbor_ranks[DOWN]);
-    MPI_Cart_shift(cartesian_comm, 1, 1, &neighbor_ranks[LEFT], &neighbor_ranks[RIGHT]);
+    // Get the ranks of the neighbouring nodes (up, down, left, right)
+    MPI_Cart_shift(cartesian_comm, 0, 1, &neighbour_ranks[UP], &neighbour_ranks[DOWN]);
+    MPI_Cart_shift(cartesian_comm, 1, 1, &neighbour_ranks[LEFT], &neighbour_ranks[RIGHT]);
 
-    printf("Node %d (%d,%d): up=%d down=%d left=%d right=%d\n", rank, coords[0], coords[1], neighbor_ranks[UP], neighbor_ranks[DOWN], neighbor_ranks[LEFT], neighbor_ranks[RIGHT]);
+    printf("Node %d (%d,%d): up=%d down=%d left=%d right=%d\n", rank, coords[0], coords[1], neighbour_ranks[UP], neighbour_ranks[DOWN], neighbour_ranks[LEFT], neighbour_ranks[RIGHT]);
 
     int k = config->k;
     int *ports = (int *)malloc(k * sizeof(int));
@@ -85,15 +97,25 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
     for (int cycle = 1; cycle <= total_cycles; cycle++) {
         int my_availability = simulate_ports(ports, k);
 
-        int neighbor_availability[4];
-        neighbor_communication(cartesian_comm, my_availability,
-                                neighbor_ranks, neighbor_availability);
+        int neighbour_availability[4];
+        neighbour_communication(cartesian_comm, my_availability,
+                                neighbour_ranks, neighbour_availability);
 
         printf("Node %d cycle %d: %d free | up=%d down=%d left=%d right=%d\n",
                rank, cycle, my_availability,
-               neighbor_availability[UP], neighbor_availability[DOWN],
-               neighbor_availability[LEFT], neighbor_availability[RIGHT]);
+               neighbour_availability[UP], neighbour_availability[DOWN],
+               neighbour_availability[LEFT], neighbour_availability[RIGHT]);
 
+        if (my_availability < config->threshold) {
+            int best_neighbour = find_most_available_neighbour(neighbour_availability, config->threshold);
+            if (best_neighbour != -1) {
+                printf("Node %d cycle %d: forwarding to neighbour %d\n", rank, cycle, neighbour_ranks[best_neighbour]);
+                // Implement the logic to forward data to the best neighbour
+            } else {
+                printf("Node %d cycle %d: no neighbour above threshold\n", rank, cycle);
+                // Implement the logic to send to base station
+            }
+        }
         sleep(config->cycle_time);
     }
 
