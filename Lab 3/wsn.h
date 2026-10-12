@@ -7,3 +7,11 @@ typedef struct {
     char timestamp[32];
     double sent_time;
 } Report;
+
+typedef struct {
+    //TODO
+} BaseStation_Reply;
+
+//TODO TAGS FOR MESSAGES BETWEEN NODES AND BASE STATION
+
+
