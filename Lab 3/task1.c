@@ -39,43 +39,88 @@ int simulate_ports(int *ports, int k) {
         }
     }
     return free_ports;
-};
+}
 
-void neighbour_communication(MPI_Comm cartesian_comm, int my_availability, const int neighbour_ranks[4], int neighbour_availability[4]) {
-    MPI_Request requests[8];
+int neighbour_communication(MPI_Comm cartesian_comm, int my_availability, int threshold,
+                            const int neighbour_ranks[4], int neighbour_availability[4]) {
+    MPI_Request requests[8], replies[4], cycle_barrier;
+    int request_count = 0, reply_count = 0;
+    int request_signal = 1;
+    int barrier_started = 0, cycle_finished = 0;
 
     for (int i = 0; i < 4; i++) {
-        neighbour_availability[i] = -1; // Initialize neighbour availability to -1 (no neighbour)
-        // Send my availability to each neighbour
-        MPI_Isend(&my_availability, 1, MPI_INT, neighbour_ranks[i], TAG_NEIGHBOUR, cartesian_comm, &requests[i]);
-        // Receive neighbour availability from each neighbour
-        MPI_Irecv(&neighbour_availability[i], 1, MPI_INT, neighbour_ranks[i], TAG_NEIGHBOUR, cartesian_comm, &requests[i + 4]);
-        
+        neighbour_availability[i] = -1; // No neighbour, or availability not requested.
+        if (my_availability <= threshold && neighbour_ranks[i] != MPI_PROC_NULL) {
+            MPI_Irecv(&neighbour_availability[i], 1, MPI_INT, neighbour_ranks[i],
+                      TAG_NEIGHBOUR_REPLY, cartesian_comm, &requests[request_count++]);
+            MPI_Isend(&request_signal, 1, MPI_INT, neighbour_ranks[i],
+                      TAG_NEIGHBOUR_REQUEST, cartesian_comm, &requests[request_count++]);
+        }
     }
-    MPI_Waitall(8, requests, MPI_STATUSES_IGNORE);
+
+    // All nodes answer requests, including healthy nodes and nodes awaiting replies.
+    // A node joins the barrier after its own replies arrive, but keeps answering
+    // requests until every node has finished. This avoids unmatched requests.
+    while (!cycle_finished) {
+        MPI_Status status;
+        int flag;
+        MPI_Iprobe(MPI_ANY_SOURCE, TAG_NEIGHBOUR_REQUEST, cartesian_comm, &flag, &status);
+        while (flag) {
+            int incoming_request;
+            MPI_Recv(&incoming_request, 1, MPI_INT, status.MPI_SOURCE,
+                     TAG_NEIGHBOUR_REQUEST, cartesian_comm, MPI_STATUS_IGNORE);
+            MPI_Isend(&my_availability, 1, MPI_INT, status.MPI_SOURCE,
+                      TAG_NEIGHBOUR_REPLY, cartesian_comm, &replies[reply_count++]);
+            MPI_Iprobe(MPI_ANY_SOURCE, TAG_NEIGHBOUR_REQUEST, cartesian_comm, &flag, &status);
+        }
+
+        if (!barrier_started) {
+            int requests_finished;
+            MPI_Testall(request_count, requests, &requests_finished, MPI_STATUSES_IGNORE);
+            if (requests_finished) {
+                MPI_Ibarrier(cartesian_comm, &cycle_barrier);
+                barrier_started = 1;
+            }
+        }
+        if (barrier_started) MPI_Test(&cycle_barrier, &cycle_finished, MPI_STATUS_IGNORE);
+        if (!cycle_finished) usleep(1000);
+    }
+
+    MPI_Waitall(reply_count, replies, MPI_STATUSES_IGNORE);
+    return request_count + 2 * reply_count; // Count sends and receives at this node.
 }
 
 int find_most_available_neighbour(int neighbour_availability[4], int threshold) {
     int best_neighbour_index = -1;
 
     for (int i = 0; i < 4; i++) {
-        if (neighbour_availability[i] > threshold && (best_neighbour_index == -1 || neighbour_availability[i] > neighbour_availability[best_neighbour_index])) {
-            best_neighbour_index = neighbour_availability[i];
+        if (neighbour_availability[i] > threshold &&
+            (best_neighbour_index == -1 ||
+             neighbour_availability[i] > neighbour_availability[best_neighbour_index])) {
             best_neighbour_index = i;
         }
     }
     return best_neighbour_index;
 }
 
-Report create_report(int node_rank, int x, int y, int my_availability, const int neighbour_ranks[4], const int neighbour_availability[4]) {
-    Report report;
-    int real_neighbours = 0;
-
-    for (int i = 0; i < 4; i++) {
-        if (neighbour_ranks[i] != MPI_PROC_NULL) {
-            real_neighbours++;
+// Each congested cycle represents one incoming EV asking for charging directions.
+// Resolve the waiting requests by giving each EV one destination; no EV MPI
+// process or reservation of the destination's ports is needed in this simulation.
+void redirect_evs(int rank, int *waiting_evs, const int destinations[], int count) {
+    for (int i = 0; i < count; i++) {
+        int ev_count = *waiting_evs / count + (i < *waiting_evs % count);
+        if (ev_count > 0) {
+            printf("Node %d: directing %d waiting EV(s) to charging node %d\n",
+                   rank, ev_count, destinations[i]);
         }
     }
+    *waiting_evs = 0;
+}
+
+Report create_report(int node_rank, int x, int y, int my_availability,
+                     const int neighbour_ranks[4], const int neighbour_availability[4],
+                     int messages_exchanged) {
+    Report report;
 
     report.node_rank = node_rank;
     report.x = x;
@@ -86,15 +131,16 @@ Report create_report(int node_rank, int x, int y, int my_availability, const int
         report.neighbour_availability[i] = neighbour_availability[i];
     }
 
-    report.msgs_exchanged = 2 * real_neighbours; // Each neighbour exchange consists of one send and one receive
-    report.bytes_exchanges = 2 * real_neighbours * sizeof(int); // Each exchange consists of one int sent and one int received
+    report.msgs_exchanged = messages_exchanged;
+    report.bytes_exchanges = messages_exchanged * sizeof(int); // Requests and replies each contain one int.
 
     timestamp(report.timestamp, sizeof(report.timestamp));
 
     return report;
 }
 
-void handle_base_station_message(int rank, int base_station_rank, int *terminated, MPI_Status *status) {
+void handle_base_station_message(int rank, int base_station_rank, int *terminated,
+                                 int *waiting_evs, int *awaiting_reply, MPI_Status *status) {
     if (status->MPI_TAG == TAG_TERMINATE) {
         int terminate_signal;
         MPI_Recv(&terminate_signal, 1, MPI_INT, base_station_rank, TAG_TERMINATE, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -104,27 +150,33 @@ void handle_base_station_message(int rank, int base_station_rank, int *terminate
     } else if (status->MPI_TAG == TAG_REPLY) {
         BaseStationReply reply;
         MPI_Recv(&reply, sizeof(BaseStationReply), MPI_BYTE, base_station_rank, TAG_REPLY, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        
+        *awaiting_reply = 0;
+
         if (reply.count > 0) {
             printf("Node %d received reply from base station: %d nodes, send_time=%.2f\n", rank, reply.count, reply.send_time);
             for (int i = 0; i < reply.count; i++) {
                 printf("  Base Station suggests node: %d\n", reply.nodes[i]);
             }
+            redirect_evs(rank, waiting_evs, reply.nodes, reply.count);
         } else {
-            printf("Node %d received reply from base station: no nodes available\n", rank);
+            printf("Node %d: notifying %d waiting EV(s) that no nodes are available nearby\n",
+                   rank, *waiting_evs);
+            *waiting_evs = 0;
         }
     }
 }
 
-void check_base_station(int rank, int base_station_rank, int *terminated) {
-        MPI_Status status;
-        int flag;
-    
+void check_base_station(int rank, int base_station_rank, int *terminated,
+                        int *waiting_evs, int *awaiting_reply) {
+    MPI_Status status;
+    int flag;
+
+    MPI_Iprobe(base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
+    while (flag) {
+        handle_base_station_message(rank, base_station_rank, terminated,
+                                    waiting_evs, awaiting_reply, &status);
         MPI_Iprobe(base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
-        while (flag) {
-            handle_base_station_message(rank, base_station_rank, terminated, &status);
-            MPI_Iprobe(base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &flag, &status);
-        }
+    }
 }
 
 void run_node(MPI_Comm nodes, const SimulationConfig *config) {
@@ -155,8 +207,10 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
     MPI_Request report_request = MPI_REQUEST_NULL;
 
     int terminated = 0;
+    int waiting_evs = 0, awaiting_reply = 0;
     for (int cycle = 1; ; cycle++) {
-        check_base_station(rank, config->base_station_rank, &terminated);
+        check_base_station(rank, config->base_station_rank, &terminated,
+                           &waiting_evs, &awaiting_reply);
 
         int stop_all_nodes;
         MPI_Allreduce(&terminated, &stop_all_nodes, 1, MPI_INT, MPI_LOR, cartesian_comm);
@@ -168,32 +222,37 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
         int my_availability = simulate_ports(ports, k);
 
         int neighbour_availability[4];
-        neighbour_communication(cartesian_comm, my_availability,
-                                neighbour_ranks, neighbour_availability);
+        int messages_exchanged = neighbour_communication(cartesian_comm, my_availability,
+                                  config->threshold, neighbour_ranks, neighbour_availability);
 
-        printf("Node %d cycle %d: %d free | up=%d down=%d left=%d right=%d\n",
-               rank, cycle, my_availability,
-               neighbour_availability[UP], neighbour_availability[DOWN],
-               neighbour_availability[LEFT], neighbour_availability[RIGHT]);
+        printf("Node %d cycle %d: %d free\n", rank, cycle, my_availability);
 
-        if (my_availability < config->threshold) {
+        if (my_availability <= config->threshold) {
+            waiting_evs++;
+            printf("Node %d cycle %d: requested availability | up=%d down=%d left=%d right=%d\n",
+                   rank, cycle, neighbour_availability[UP], neighbour_availability[DOWN],
+                   neighbour_availability[LEFT], neighbour_availability[RIGHT]);
             int best_neighbour = find_most_available_neighbour(neighbour_availability, config->threshold);
             if (best_neighbour != -1) {
-                printf("Node %d cycle %d: forwarding to neighbour %d\n", rank, cycle, neighbour_ranks[best_neighbour]);
-                // Implement the logic to forward data to the best neighbour
-            } else {
+                int destination = neighbour_ranks[best_neighbour];
+                redirect_evs(rank, &waiting_evs, &destination, 1);
+            } else if (!awaiting_reply) {
                 printf("Node %d cycle %d: no neighbour above threshold\n", rank, cycle);
 
                 if (report_request != MPI_REQUEST_NULL) {
                     MPI_Wait(&report_request, MPI_STATUS_IGNORE);
                 }
 
-                report = create_report(rank, coords[0], coords[1], my_availability, neighbour_ranks, neighbour_availability);
+                report = create_report(rank, coords[0], coords[1], my_availability,
+                                       neighbour_ranks, neighbour_availability, messages_exchanged);
                 report.sent_time = MPI_Wtime();
 
                 MPI_Isend(&report, sizeof(Report), MPI_BYTE, config->base_station_rank, TAG_REPORT, MPI_COMM_WORLD, &report_request);
+                awaiting_reply = 1;
                 printf("Node %d cycle %d: report sent to base station\n", rank, cycle);
             }
+        } else if (waiting_evs > 0) {
+            redirect_evs(rank, &waiting_evs, &rank, 1);
         }
         sleep(config->cycle_time);
     }
@@ -203,10 +262,15 @@ void run_node(MPI_Comm nodes, const SimulationConfig *config) {
         MPI_Status status;
         // Use Probe instead of IProbe to ensure CPU is not wasted in a busy wait loop. This will block until a message is available.
         MPI_Probe(config->base_station_rank, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-        handle_base_station_message(rank, config->base_station_rank, &terminated, &status);
+        handle_base_station_message(rank, config->base_station_rank, &terminated,
+                                    &waiting_evs, &awaiting_reply, &status);
     }
 
     if (report_request != MPI_REQUEST_NULL) MPI_Wait(&report_request, MPI_STATUS_IGNORE);
+
+    if (waiting_evs > 0) {
+        printf("Node %d: cancelling %d waiting EV request(s) at shutdown\n", rank, waiting_evs);
+    }
 
     MPI_Send(&rank, 1, MPI_INT, config->base_station_rank, TAG_COMPLETE, MPI_COMM_WORLD);
     printf("Node %d: sent complete signal to base station\n", rank);
