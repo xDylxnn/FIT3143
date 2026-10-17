@@ -1,0 +1,22 @@
+#!/bin/bash
+# Task 3b: communication delay vs line topology size (1x2 ... 1x31, ~6 min)
+#SBATCH --job-name=wsn_line
+#SBATCH --time=00:10:00
+#SBATCH --mem=16G
+#SBATCH --ntasks=32
+#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --partition=defq
+
+module load openmpi/4.1.5-gcc-11.2.0-ux65npg
+export OMP_NUM_THREADS=2
+export OMP_WAIT_POLICY=passive
+
+K=2; THRESHOLD=1; CYCLE=1; RUN=8; PERIOD=2; MODE=3
+mkdir -p out
+
+for N in $(seq 2 31); do
+    echo "=== line 1x${N} ==="
+    srun -n $((N+1)) ./wsn 1 $N $K $THRESHOLD $CYCLE $RUN $PERIOD $MODE > out/line_1x${N}.txt
+    tail -1 out/line_1x${N}.txt
+done

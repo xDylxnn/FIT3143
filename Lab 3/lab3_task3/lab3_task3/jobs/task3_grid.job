@@ -1,0 +1,24 @@
+#!/bin/bash
+# Task 3a: communication delay vs EV grid size (30 grid sizes, ~6 min)
+#SBATCH --job-name=wsn_grid
+#SBATCH --time=00:10:00
+#SBATCH --mem=16G
+#SBATCH --ntasks=32               # CAAS max per job -> grids up to 31 nodes + base
+#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=16      # 16 cores per machine: >16 processes span 2 machines
+#SBATCH --partition=defq
+
+module load openmpi/4.1.5-gcc-11.2.0-ux65npg
+export OMP_NUM_THREADS=2
+export OMP_WAIT_POLICY=passive    # idle port threads sleep instead of spinning
+
+K=2; THRESHOLD=1; CYCLE=1; RUN=8; PERIOD=2; MODE=3
+mkdir -p out
+
+for g in 2x2 2x3 2x4 3x3 2x5 2x6 3x4 4x3 2x7 3x5 2x8 4x4 2x9 3x6 2x10 4x5 5x4 \
+         3x7 2x11 2x12 3x8 4x6 5x5 2x13 3x9 2x14 4x7 2x15 3x10 5x6; do
+    m=${g%x*}; n=${g#*x}
+    echo "=== grid ${m}x${n} ($((m*n)) nodes) ==="
+    srun -n $((m*n+1)) ./wsn $m $n $K $THRESHOLD $CYCLE $RUN $PERIOD $MODE > out/grid_${m}x${n}.txt
+    tail -1 out/grid_${m}x${n}.txt
+done

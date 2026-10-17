@@ -1,0 +1,25 @@
+topology,measure,segment,slope_us_per_node,intercept_ms,r2,points
+grid,neighbour_avg_ms,1 machine,2.569,0.0768,0.149,10
+grid,neighbour_avg_ms,2 machines,3.885,0.0374,0.268,20
+grid,neighbour_avg_ms,all,2.435,0.0736,0.309,30
+grid,oneway_ms,1 machine,13.752,0.1542,0.641,10
+grid,oneway_ms,2 machines,-7.924,0.5952,0.12,20
+grid,oneway_ms,all,5.055,0.2758,0.128,30
+grid,rtt_ms,1 machine,27.503,0.3083,0.641,10
+grid,rtt_ms,2 machines,-15.847,1.1905,0.12,20
+grid,rtt_ms,all,10.11,0.5515,0.128,30
+grid,terminate_avg_ms,1 machine,-34309.355,567.6001,0.133,10
+grid,terminate_avg_ms,2 machines,22997.428,-37.4992,0.162,20
+grid,terminate_avg_ms,all,18153.629,61.2283,0.195,30
+line,neighbour_avg_ms,1 machine,-0.716,0.0543,0.027,14
+line,neighbour_avg_ms,2 machines,0.534,0.0651,0.006,16
+line,neighbour_avg_ms,all,1.475,0.0396,0.182,30
+line,oneway_ms,1 machine,8.012,0.2367,0.365,14
+line,oneway_ms,2 machines,27.765,-0.0299,0.05,16
+line,oneway_ms,all,20.848,0.1303,0.161,30
+line,rtt_ms,1 machine,16.024,0.4733,0.365,14
+line,rtt_ms,2 machines,55.53,-0.0598,0.05,16
+line,rtt_ms,all,41.696,0.2605,0.161,30
+line,terminate_avg_ms,1 machine,-37948.636,561.0711,0.215,14
+line,terminate_avg_ms,2 machines,49152.49,-630.9399,0.735,16
+line,terminate_avg_ms,all,17828.588,96.6751,0.22,30

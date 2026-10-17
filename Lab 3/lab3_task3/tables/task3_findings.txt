@@ -1,0 +1,29 @@
+DATA CHECK
+  grid: 30 distinct sizes [OK]
+  line: 30 distinct sizes [OK]
+  negative round trips: 0 (should be 0)
+  runs with < 10 alerts (round trip less reliable): 2x2, 2x15, 3x10, 5x6, 1x2, 1x3
+  clock skew between base and nodes: 0.68 ms median, 6.54 ms max
+
+FINDINGS (numbers to quote when answering the two questions)
+
+a) grid size: 4-30 nodes
+  neighbour one-way       : median 0.100 ms on 1 machine, 0.125 ms on 2 machines (x1.2); within 1 machine +2.6 us/node (R²=0.15) -> no clear trend with size
+  report/reply one-way    : median 0.269 ms on 1 machine, 0.424 ms on 2 machines (x1.6); within 1 machine +13.8 us/node (R²=0.64) -> grows with size
+  report+reply round trip : median 0.538 ms on 1 machine, 0.848 ms on 2 machines (x1.6); within 1 machine +27.5 us/node (R²=0.64) -> grows with size
+
+b) line topology: 2-31 nodes
+  neighbour one-way       : median 0.047 ms on 1 machine, 0.062 ms on 2 machines (x1.3); within 1 machine -0.7 us/node (R²=0.03) -> no clear trend with size
+  report/reply one-way    : median 0.313 ms on 1 machine, 0.479 ms on 2 machines (x1.5); within 1 machine +8.0 us/node (R²=0.36) -> grows with size
+  report+reply round trip : median 0.627 ms on 1 machine, 0.958 ms on 2 machines (x1.5); within 1 machine +16.0 us/node (R²=0.36) -> grows with size
+
+Task 2 versions (round trip, ms):
+      v1 blocking  v2 nonblocking  v3 Testsome
+size                                          
+3x3         0.588           0.297        0.522
+4x4         0.783           0.348        0.729
+5x6         0.422           0.152        0.508
+1x8         0.554           0.278        0.588
+1x16        0.842           0.291        0.742
+1x31        2.343           0.505        0.765
+  fastest per size: 3x3=v2 nonblocking, 4x4=v2 nonblocking, 5x6=v2 nonblocking, 1x8=v2 nonblocking, 1x16=v2 nonblocking, 1x31=v2 nonblocking

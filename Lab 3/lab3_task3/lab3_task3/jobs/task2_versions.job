@@ -1,0 +1,23 @@
+#!/bin/bash
+# Optional (Task 2 HD): run base station versions 1 and 2 on a few sizes.
+# Version 3 results for the same sizes come from task3_grid/line.job. ~3 min.
+#SBATCH --job-name=wsn_versions
+#SBATCH --time=00:10:00
+#SBATCH --mem=16G
+#SBATCH --ntasks=32
+#SBATCH --cpus-per-task=1
+#SBATCH --ntasks-per-node=16
+#SBATCH --partition=defq
+
+module load openmpi/4.1.5-gcc-11.2.0-ux65npg
+export OMP_NUM_THREADS=2
+export OMP_WAIT_POLICY=passive
+mkdir -p out
+
+for g in 3x3 4x4 5x6 1x8 1x16 1x31; do
+    m=${g%x*}; n=${g#*x}
+    for MODE in 1 2; do
+        echo "=== ${g} version ${MODE} ==="
+        srun -n $((m*n+1)) ./wsn $m $n 2 1 1 8 2 $MODE > out/v${MODE}_${g}.txt
+    done
+done

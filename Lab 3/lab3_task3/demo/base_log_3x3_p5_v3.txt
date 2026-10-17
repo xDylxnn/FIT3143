@@ -1,0 +1,99 @@
+Base station: 3 x 3 grid, k=4, full when free <= 2, cycle 1 s, run 30 s, period 5 s, version 3
+
+[  2.032 s] Alert #1 from node 0 (0,0) at 2026-10-17 22:12:14: 1 free, delay 0.395 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 4 6
+[  9.036 s] Alert #2 from node 0 (0,0) at 2026-10-17 22:12:21: 0 free, delay 0.562 ms
+    neighbours (free ports): 3(0) 1(0) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 4 6
+[  9.036 s] Alert #3 from node 1 (0,1) at 2026-10-17 22:12:21: 0 free, delay 0.499 ms
+    neighbours (free ports): 4(2) 0(0) 2(2) | 6 messages, 24 bytes exchanged
+    1/3 neighbours reported in the last 5 s -> suggest nodes 5 7
+[  9.036 s] Alert #4 from node 3 (1,0) at 2026-10-17 22:12:21: 0 free, delay 1.696 ms
+    neighbours (free ports): 0(0) 6(0) 4(2) | 6 messages, 24 bytes exchanged
+    1/3 neighbours reported in the last 5 s -> suggest nodes 5 7
+[  9.036 s] Alert #5 from node 5 (1,2) at 2026-10-17 22:12:21: 0 free, delay 0.359 ms
+    neighbours (free ports): 2(2) 8(2) 4(2) | 6 messages, 24 bytes exchanged
+    0/3 neighbours reported in the last 5 s -> suggest nodes 7
+[  9.036 s] Alert #6 from node 6 (2,0) at 2026-10-17 22:12:21: 0 free, delay 11.056 ms
+    neighbours (free ports): 3(0) 7(2) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 10.037 s] Alert #7 from node 0 (0,0) at 2026-10-17 22:12:22: 1 free, delay 0.414 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    2/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 10.037 s] Alert #8 from node 8 (2,2) at 2026-10-17 22:12:22: 1 free, delay 0.363 ms
+    neighbours (free ports): 5(1) 7(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 10.037 s] Alert #9 from node 6 (2,0) at 2026-10-17 22:12:22: 1 free, delay 10.948 ms
+    neighbours (free ports): 3(1) 7(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 10.038 s] Alert #10 from node 2 (0,2) at 2026-10-17 22:12:22: 1 free, delay 11.443 ms
+    neighbours (free ports): 5(1) 1(1) | 4 messages, 16 bytes exchanged
+    2/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 14.048 s] Alert #11 from node 0 (0,0) at 2026-10-17 22:12:26: 1 free, delay 0.577 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 4
+[ 15.049 s] Alert #12 from node 8 (2,2) at 2026-10-17 22:12:27: 0 free, delay 0.354 ms
+    neighbours (free ports): 5(2) 7(0) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 4 6
+[ 15.049 s] Alert #13 from node 7 (2,1) at 2026-10-17 22:12:27: 0 free, delay 1.678 ms
+    neighbours (free ports): 4(0) 6(2) 8(0) | 6 messages, 24 bytes exchanged
+    1/3 neighbours reported in the last 5 s -> no nodes available nearby
+[ 15.050 s] Alert #14 from node 4 (1,1) at 2026-10-17 22:12:27: 0 free, delay 0.890 ms
+    neighbours (free ports): 1(2) 7(0) 3(2) 5(2) | 8 messages, 32 bytes exchanged
+    1/4 neighbours reported in the last 5 s -> suggest nodes 2
+[ 17.051 s] Alert #15 from node 0 (0,0) at 2026-10-17 22:12:29: 1 free, delay 0.536 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2
+[ 17.051 s] Alert #16 from node 6 (2,0) at 2026-10-17 22:12:29: 1 free, delay 10.865 ms
+    neighbours (free ports): 3(1) 7(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 18.052 s] Alert #17 from node 7 (2,1) at 2026-10-17 22:12:30: 0 free, delay 1.502 ms
+    neighbours (free ports): 4(2) 6(2) 8(0) | 6 messages, 24 bytes exchanged
+    3/3 neighbours reported in the last 5 s -> no nodes available nearby
+[ 23.061 s] Alert #18 from node 4 (1,1) at 2026-10-17 22:12:35: 0 free, delay 0.171 ms
+    neighbours (free ports): 1(2) 7(2) 3(2) 5(2) | 8 messages, 32 bytes exchanged
+    0/4 neighbours reported in the last 5 s -> suggest nodes 0 2 6 8
+[ 24.062 s] Alert #19 from node 0 (0,0) at 2026-10-17 22:12:36: 1 free, delay 0.465 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 6
+[ 24.062 s] Alert #20 from node 8 (2,2) at 2026-10-17 22:12:36: 1 free, delay 0.322 ms
+    neighbours (free ports): 5(1) 7(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 6
+[ 24.062 s] Alert #21 from node 4 (1,1) at 2026-10-17 22:12:36: 1 free, delay 0.265 ms
+    neighbours (free ports): 1(1) 7(1) 3(1) 5(1) | 8 messages, 32 bytes exchanged
+    0/4 neighbours reported in the last 5 s -> suggest nodes 2 6
+[ 26.063 s] Alert #22 from node 0 (0,0) at 2026-10-17 22:12:38: 1 free, delay 0.445 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 6
+[ 27.064 s] Alert #23 from node 0 (0,0) at 2026-10-17 22:12:39: 1 free, delay 0.507 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 5 s -> suggest nodes 2 6
+[ 27.064 s] Alert #24 from node 1 (0,1) at 2026-10-17 22:12:39: 1 free, delay 0.484 ms
+    neighbours (free ports): 4(1) 0(1) 2(1) | 6 messages, 24 bytes exchanged
+    2/3 neighbours reported in the last 5 s -> no nodes available nearby
+[ 27.064 s] Alert #25 from node 2 (0,2) at 2026-10-17 22:12:39: 1 free, delay 10.803 ms
+    neighbours (free ports): 5(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> no nodes available nearby
+[ 27.064 s] Alert #26 from node 4 (1,1) at 2026-10-17 22:12:39: 1 free, delay 0.301 ms
+    neighbours (free ports): 1(1) 7(1) 3(1) 5(1) | 8 messages, 32 bytes exchanged
+    1/4 neighbours reported in the last 5 s -> suggest nodes 6
+[ 29.066 s] Alert #27 from node 0 (0,0) at 2026-10-17 22:12:41: 1 free, delay 0.433 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> suggest nodes 6
+[ 29.066 s] Alert #28 from node 1 (0,1) at 2026-10-17 22:12:41: 1 free, delay 0.411 ms
+    neighbours (free ports): 4(1) 0(1) 2(1) | 6 messages, 24 bytes exchanged
+    3/3 neighbours reported in the last 5 s -> no nodes available nearby
+[ 29.066 s] Alert #29 from node 2 (0,2) at 2026-10-17 22:12:41: 1 free, delay 10.802 ms
+    neighbours (free ports): 5(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 5 s -> suggest nodes 8
+[ 30.000 s] Time is up: sending TERMINATE to all nodes
+
+===== SUMMARY =====
+Total run time        : 31.067 s (incl. shutdown)
+Alerts answered       : 29 (18 with suggestions, 11 'none nearby')
+Late alerts           : 0
+Messages at base      : 76
+Average report delay  : 2.743 ms
+Neighbour msg delay   : 0.188 ms avg over 744 messages
+Reply delay           : -2.249 ms avg over 29 replies

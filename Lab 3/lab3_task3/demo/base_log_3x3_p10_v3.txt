@@ -1,0 +1,85 @@
+Base station: 3 x 3 grid, k=4, full when free <= 2, cycle 1 s, run 30 s, period 10 s, version 3
+
+[  1.015 s] Alert #1 from node 0 (0,0) at 2026-10-17 22:12:44: 1 free, delay -0.045 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> suggest nodes 2 4 6
+[  5.026 s] Alert #2 from node 3 (1,0) at 2026-10-17 22:12:48: 0 free, delay 1.048 ms
+    neighbours (free ports): 0(2) 6(2) 4(2) | 6 messages, 24 bytes exchanged
+    1/3 neighbours reported in the last 10 s -> suggest nodes 5 7
+[  5.026 s] Alert #3 from node 7 (2,1) at 2026-10-17 22:12:48: 0 free, delay 1.071 ms
+    neighbours (free ports): 4(2) 6(2) 8(2) | 6 messages, 24 bytes exchanged
+    0/3 neighbours reported in the last 10 s -> suggest nodes 5
+[  8.028 s] Alert #4 from node 8 (2,2) at 2026-10-17 22:12:51: 0 free, delay -0.254 ms
+    neighbours (free ports): 5(2) 7(2) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> suggest nodes 2
+[  9.028 s] Alert #5 from node 6 (2,0) at 2026-10-17 22:12:52: 0 free, delay 10.323 ms
+    neighbours (free ports): 3(2) 7(2) | 4 messages, 16 bytes exchanged
+    2/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 12.030 s] Alert #6 from node 8 (2,2) at 2026-10-17 22:12:55: 1 free, delay -0.316 ms
+    neighbours (free ports): 5(1) 7(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> suggest nodes 2
+[ 12.031 s] Alert #7 from node 0 (0,0) at 2026-10-17 22:12:55: 1 free, delay -0.020 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> suggest nodes 2
+[ 14.032 s] Alert #8 from node 0 (0,0) at 2026-10-17 22:12:57: 1 free, delay -0.024 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> suggest nodes 2
+[ 14.032 s] Alert #9 from node 6 (2,0) at 2026-10-17 22:12:57: 1 free, delay 10.445 ms
+    neighbours (free ports): 3(1) 7(1) | 4 messages, 16 bytes exchanged
+    2/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 16.033 s] Alert #10 from node 0 (0,0) at 2026-10-17 22:12:59: 0 free, delay -0.156 ms
+    neighbours (free ports): 3(2) 1(2) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> suggest nodes 2 4
+[ 16.033 s] Alert #11 from node 6 (2,0) at 2026-10-17 22:12:59: 0 free, delay 10.370 ms
+    neighbours (free ports): 3(2) 7(2) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> suggest nodes 4
+[ 19.035 s] Alert #12 from node 0 (0,0) at 2026-10-17 22:13:02: 0 free, delay -0.051 ms
+    neighbours (free ports): 3(2) 1(2) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> suggest nodes 2 4
+[ 21.036 s] Alert #13 from node 0 (0,0) at 2026-10-17 22:13:04: 0 free, delay -0.115 ms
+    neighbours (free ports): 3(2) 1(2) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> suggest nodes 2 4
+[ 22.037 s] Alert #14 from node 5 (1,2) at 2026-10-17 22:13:05: 1 free, delay 0.201 ms
+    neighbours (free ports): 2(1) 8(1) 4(1) | 6 messages, 24 bytes exchanged
+    0/3 neighbours reported in the last 10 s -> no nodes available nearby
+[ 23.038 s] Alert #15 from node 8 (2,2) at 2026-10-17 22:13:06: 0 free, delay -0.213 ms
+    neighbours (free ports): 5(2) 7(2) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 24.038 s] Alert #16 from node 8 (2,2) at 2026-10-17 22:13:07: 1 free, delay -0.210 ms
+    neighbours (free ports): 5(1) 7(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 24.039 s] Alert #17 from node 0 (0,0) at 2026-10-17 22:13:07: 1 free, delay -0.180 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 24.039 s] Alert #18 from node 6 (2,0) at 2026-10-17 22:13:07: 1 free, delay 10.296 ms
+    neighbours (free ports): 3(1) 7(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 25.040 s] Alert #19 from node 2 (0,2) at 2026-10-17 22:13:08: 1 free, delay 10.956 ms
+    neighbours (free ports): 5(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 26.041 s] Alert #20 from node 6 (2,0) at 2026-10-17 22:13:09: 1 free, delay 10.292 ms
+    neighbours (free ports): 3(1) 7(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 26.041 s] Alert #21 from node 8 (2,2) at 2026-10-17 22:13:09: 1 free, delay -0.065 ms
+    neighbours (free ports): 5(1) 7(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 27.042 s] Alert #22 from node 0 (0,0) at 2026-10-17 22:13:10: 1 free, delay -0.131 ms
+    neighbours (free ports): 3(1) 1(1) | 4 messages, 16 bytes exchanged
+    0/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 27.042 s] Alert #23 from node 2 (0,2) at 2026-10-17 22:13:10: 1 free, delay 10.303 ms
+    neighbours (free ports): 5(1) 1(1) | 4 messages, 16 bytes exchanged
+    1/2 neighbours reported in the last 10 s -> no nodes available nearby
+[ 27.042 s] Alert #24 from node 1 (0,1) at 2026-10-17 22:13:10: 1 free, delay 0.438 ms
+    neighbours (free ports): 4(1) 0(1) 2(1) | 6 messages, 24 bytes exchanged
+    2/3 neighbours reported in the last 10 s -> no nodes available nearby
+[ 30.000 s] Time is up: sending TERMINATE to all nodes
+Late alert from node 6 (not answered)
+
+===== SUMMARY =====
+Total run time        : 31.046 s (incl. shutdown)
+Alerts answered       : 24 (11 with suggestions, 13 'none nearby')
+Late alerts           : 1
+Messages at base      : 67
+Average report delay  : 3.082 ms
+Neighbour msg delay   : 0.126 ms avg over 744 messages
+Reply delay           : -2.669 ms avg over 24 replies
